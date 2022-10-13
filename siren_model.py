@@ -41,7 +41,7 @@ if __name__ == "__main__":
   parser = argparse.ArgumentParser()
   parser.add_argument("-t", "--train", help="train model", action="store_true")
   parser.add_argument("-ld", "--logdir", help="Path to save logs", default=f"/tmp/{getpass.getuser()}")
-  parser.add_argument("-ni", "--num_iters", help="Number of iterations to train for", type=int, default=50000)
+  parser.add_argument("-ni", "--num_iters", help="Number of iterations to train for", type=int, default=1)
   parser.add_argument("-lr", "--learning_rate", help="Learning rate", type=float, default=2e-4)
   parser.add_argument("-se", "--seed", help="Random seed", type=int, default=random.randint(1, int(1e6)))
   parser.add_argument("-fd", "--full_dataset", help="Whether to use full dataset", action='store_true')
@@ -59,7 +59,7 @@ if __name__ == "__main__":
   func_rep = Siren(
         dim_in=2,
         dim_hidden=args.layer_size,
-        dim_out=2,
+        dim_out=1,
         num_layers=args.num_layers,
         final_activation=torch.nn.Identity(),
         w0_initial=args.w0_initial,
@@ -73,22 +73,9 @@ if __name__ == "__main__":
 
   print("creating dataset...")
   labels = torch.Tensor(labels)
+  labels = torch.unsqueeze(labels, dim=-1)
   edges = torch.Tensor(edges)
-  # dataset = EdgeDataset(edges, labels)
-  # train_size = int(0.6 * len(dataset))
-  # eval_size = len(dataset) - train_size
-  # train_dataset, eval_dataset = random_split(dataset, [train_size, eval_size])
 
-  # print("Creating data loaders...")
-  # train_dataloader = DataLoader(
-  #     train_dataset,
-  #     sampler=RandomSampler(train_dataset),  # Sampling for training is random
-  # )
-
-  # evaluation_dataloader = DataLoader(
-  #     eval_dataset,
-  #     sampler=SequentialSampler(eval_dataset)  # Sampling for validation is sequential as the order doesn't matter.
-  # )
   if args.train:
       trainer = Trainer(func_rep, lr=args.learning_rate)
 

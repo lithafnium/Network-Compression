@@ -18,6 +18,9 @@ import numpy as np
 import pandas as pd
 
 
+dtype = torch.float32
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+torch.set_default_tensor_type('torch.cuda.FloatTensor' if torch.cuda.is_available() else 'torch.FloatTensor')
 
 class EdgeDataset(Dataset):
     def __init__(self, edges, labels):
@@ -57,8 +60,8 @@ def train(
         model.train()
 
         for x_train_batch, y_train_batch in train_dataloader:
-            b_nodes = x_train_batch
-            b_labels = y_train_batch
+            b_nodes = x_train_batch.to(device)
+            b_labels = y_train_batch.to(device)
 
             optimizer.zero_grad()
 
@@ -152,7 +155,7 @@ def main(
     eval_size = len(dataset) - train_size
     train_dataset, eval_dataset = random_split(dataset, [train_size, eval_size])
 
-    model = ToyModel(2, 2)
+    model = ToyModel(2, 2).to(device)
     print("Creating data loaders...")
     train_dataloader = DataLoader(
         train_dataset,
@@ -161,9 +164,9 @@ def main(
     )
 
     evaluation_dataloader = DataLoader(
-        eval_dataset,
+        dataset,
         sampler=SequentialSampler(
-            eval_dataset
+            dataset
         ),  # Sampling for validation is sequential as the order doesn't matter.
         batch_size=bs,
     )
