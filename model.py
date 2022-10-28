@@ -151,15 +151,15 @@ def main(
 
     print("Creating dataset...")
     dataset = EdgeDataset(edges, labels)
-    train_size = int(0.6 * len(dataset))
-    eval_size = len(dataset) - train_size
-    train_dataset, eval_dataset = random_split(dataset, [train_size, eval_size])
+    # train_size = int(0.6 * len(dataset))
+    # eval_size = len(dataset) - train_size
+    # train_dataset, eval_dataset = random_split(dataset, [train_size, eval_size])
 
     model = ToyModel(2, 2).to(device)
     print("Creating data loaders...")
     train_dataloader = DataLoader(
-        train_dataset,
-        sampler=RandomSampler(train_dataset),  # Sampling for training is random
+        dataset,
+        sampler=RandomSampler(dataset),  # Sampling for training is random
         batch_size=bs,
     )
 

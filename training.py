@@ -16,7 +16,7 @@ class Trainer():
         self.optimizer = torch.optim.Adam(self.representation.parameters(), lr=lr)
         self.print_freq = print_freq
         self.steps = 0  # Number of steps taken in training
-        self.loss_func = torch.nn.MSELoss()
+        self.loss_func = torch.nn.CrossEntropyLoss()
         self.best_vals = {'loss': 1e8}
         self.logs = {'loss': []}
         # Store parameters of best model (in terms of highest PSNR achieved)
