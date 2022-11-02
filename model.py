@@ -19,8 +19,11 @@ import pandas as pd
 
 
 dtype = torch.float32
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-torch.set_default_tensor_type('torch.cuda.FloatTensor' if torch.cuda.is_available() else 'torch.FloatTensor')
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+torch.set_default_tensor_type(
+    "torch.cuda.FloatTensor" if torch.cuda.is_available() else "torch.FloatTensor"
+)
+
 
 class EdgeDataset(Dataset):
     def __init__(self, edges, labels):
@@ -105,8 +108,8 @@ def eval(model: ToyModel, val_dataloader):
     print("Model accuracy: {:.3f}%".format((val_acc / len(val_dataloader)).item()))
 
 
-def read_data():
-    a = mmread("socfb-Harvard1.mtx").toarray()
+def read_data(path):
+    a = mmread(path).toarray()
     # adj = np.zeros((max_id, max_id), dtype=int)
     data = []
     print(len(a))
