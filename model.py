@@ -137,26 +137,18 @@ def read_data(path):
     df = pd.DataFrame(data, columns=["id_1", "id_2", "label"])
     return df
 
+def get_data(path):
+    df = pd.read_csv(path)
+    labels = df["label"]
+    edges = df[["id_1", "id_2"]].to_numpy() 
 
-def main(
-    train_model: bool = False, evaluate_model: bool = False, get_data: bool = False
+    dataset = EdgeDataset(edges, labels)
+    return dataset
+
+def train_and_eval(
+    dataset, train_model: bool = False, evaluate_model: bool = False
 ):
     bs = 64
-    if get_data:
-        print("Reading data...")
-        df = read_data()
-        df.to_csv("dataset-mtx.csv", index=False)
-    else:
-        df = pd.read_csv("dataset-mtx.csv")
-
-    labels = df["label"]
-    edges = df[["id_1", "id_2"]].to_numpy()
-
-    print("Creating dataset...")
-    dataset = EdgeDataset(edges, labels)
-    # train_size = int(0.6 * len(dataset))
-    # eval_size = len(dataset) - train_size
-    # train_dataset, eval_dataset = random_split(dataset, [train_size, eval_size])
 
     model = ToyModel(2, 2).to(device)
     print("Creating data loaders...")
@@ -190,8 +182,12 @@ if __name__ == "__main__":
     parser.add_argument("--train-model", action="store_true")
 
     parser.add_argument("--evaluate-model", action="store_true")
-    parser.add_argument("--get-data", action="store_true")
+    parser.add_argument("--path", type=str)
 
     args = parser.parse_args()
 
-    main(args.train_model, args.evaluate_model, args.get_data)
+    dataset = get_data(args.path)
+
+    train_and_eval(dataset, args.train_model, args.evaluate_model)
+
+    # main(args.train_model, args.evaluate_model, args.get_data)
