@@ -187,6 +187,6 @@ if __name__ == "__main__":
 
     dataset = get_data(args.path)
 
-    # train_and_eval(dataset, args.train_model, args.evaluate_model)
+    train_and_eval(dataset, args.train_model, args.evaluate_model)
 
     # main(args.train_model, args.evaluate_model, args.get_data)

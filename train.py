@@ -33,10 +33,8 @@ class EdgeDataset(Dataset):
         return torch.Tensor(self.edges[i]), self.labels[i]
 
 class Trainer():
-  def __init__(self, model, lr=1e-3, print_freq=1, max_layers=6, max_nodes=64, min_nodes=12):
-    self.model = model 
+  def __init__(self, lr=1e-3, print_freq=1, max_layers=6, max_nodes=64, min_nodes=12):
     self.criterion = nn.CrossEntropyLoss()
-    self.optimizer = optim.Adam(model.parameters(), lr=lr)
     self.graph_sizes = [100, 1000]
     self.graph_densities = [0.05, 0.1, 0.25, 0.6, 0.85]
 
@@ -54,7 +52,7 @@ class Trainer():
     dataset = EdgeDataset(edges, labels)
     return dataset
   
-  def eval(self, model: GraphModel, val_dataloader: DataLoader, path: string):
+  def eval(self, model: GraphModel, val_dataloader: DataLoader, path: str):
     model.eval()
     val_acc = 0
     for X_val_batch, y_val_batch in val_dataloader:
@@ -75,7 +73,8 @@ class Trainer():
       "model_size_estimate": estimator.estimate_size()
     }
 
-  def train(self, model: GraphModel, train_dataloader, val_dataloader, epochs, path, batch_size=64):
+  def train(self, model: GraphModel, train_dataloader, val_dataloader, epochs, path, batch_size=16):
+    optimizer = optim.Adam(model.parameters(), lr=1e-3)
     for epoch_i in range(0, epochs):
         print(f"Beginning epoch {epoch_i + 1} of {epochs}")
 
@@ -86,13 +85,13 @@ class Trainer():
             b_nodes = x_train_batch.to(device)
             b_labels = y_train_batch.to(device)
 
-            self.optimizer.zero_grad()
+            optimizer.zero_grad()
 
             y_train_pred = model(b_nodes)
 
             train_loss = self.criterion(y_train_pred, b_labels)
             train_loss.backward()
-            self.optimizer.step()
+            optimizer.step()
 
             train_epoch_loss += train_loss.item() * x_train_batch.size(0)
         print(
@@ -101,13 +100,13 @@ class Trainer():
 
     eval(model, val_dataloader, path)
 
-    torch.save(model.state_dict(), f"./models/{path}.pt")
+    # torch.save(model.state_dict(), f"./models/{path}.pt")
   
-  def train_and_eval(self, data, labels, num_iters, batch_size=64, epochs=1000):
+  def train_and_eval(self, batch_size=16, epochs=1000):
     for graph_size in self.graph_sizes:
       for graph_density in self.graph_densities:
         print(f"Grabbing graph-{graph_size}-{graph_density}.csv")
-        dataset = self.get_data(f"graph-{graph_size}-{graph_density}.csv")
+        dataset = self.get_data(f"data/graph-{graph_size}-{graph_density}.csv")
 
         train_dataloader = DataLoader(
             dataset,
@@ -130,7 +129,7 @@ class Trainer():
               model, 
               train_dataloader, 
               evaluation_dataloader, 
-              epochs=1000, 
+              epochs=epochs, 
               path=f"model-{num_layers}-{num_nodes}-{graph_size}-{graph_density}"
             )
 
