@@ -19,6 +19,7 @@ class GraphModel(nn.Module):
           is_first = i == 0 
           layer_dim_in = num_features if is_first else num_nodes
           layers.append(nn.Linear(layer_dim_in, num_nodes))
+          layers.append(nn.ReLU())
 
         self.net = nn.Sequential(*layers)
         self.output = nn.Linear(num_nodes, num_classes)
