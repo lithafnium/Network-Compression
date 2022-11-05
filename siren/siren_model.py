@@ -4,7 +4,7 @@ import json
 import os
 import random
 import torch
-from siren import Siren
+from siren.siren import Siren
 from torch.utils.data import (
     Dataset,
     DataLoader,
