@@ -1,3 +1,5 @@
 *.mtx
 *.csv
 *.pt
+
+__pycache__/*
