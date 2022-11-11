@@ -46,8 +46,8 @@ class Trainer:
         print_freq=1,
         min_layers=4,
         max_layers=6,
-        max_nodes=100,
-        min_nodes=100,
+        max_nodes=512,
+        min_nodes=16,
     ):
         self.criterion = nn.CrossEntropyLoss()
         self.graph_sizes = [100, 1000]
@@ -60,7 +60,6 @@ class Trainer:
         self.model_info = {}
 
     def save_plot(self, path, loss_values, num_epochs):
-        print(loss_values)
         plt.clf()
         plt.plot([i + 1 for i in range(num_epochs)], loss_values)
         plt.savefig(f"plots/{path}.png")
@@ -171,7 +170,8 @@ class Trainer:
                 )
 
                 for num_layers in range(self.min_layers, self.max_layers + 1):
-                    for num_nodes in range(self.min_nodes, self.max_nodes + 1, 5):
+                    num_nodes = self.min_nodes
+                    while num_nodes <= self.max_nodes:
                         model = GraphModel(
                             2, 2, num_layers=num_layers, num_nodes=num_nodes
                         )
@@ -180,8 +180,9 @@ class Trainer:
                             train_dataloader,
                             evaluation_dataloader,
                             epochs=epochs,
-                            path=f"model-{num_layers}-{num_nodes}-{graph_size}-{graph_density}",
+                            path=f"squeeze-model-{num_layers}-{num_nodes}-{graph_size}-{graph_density}",
                         )
+                        num_nodes *= 2
 
         print("Saving output loss and size estimates...")
 

@@ -1,0 +1,11 @@
+{
+    "leakyrelu-model-4-16-100-0.25": {
+        "accuracy": 76.21119689941406
+    },
+    "leakyrelu-model-4-32-100-0.25": {
+        "accuracy": 76.27359771728516
+    },
+    "leakyrelu-model-4-64-100-0.25": {
+        "accuracy": 76.25920104980469
+    }
+}
