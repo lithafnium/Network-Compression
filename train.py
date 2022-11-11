@@ -45,8 +45,8 @@ class Trainer:
         lr=1e-3,
         print_freq=1,
         min_layers=4,
-        max_layers=6,
-        max_nodes=512,
+        max_layers=4,
+        max_nodes=16,
         min_nodes=16,
     ):
         self.criterion = nn.CrossEntropyLoss()
@@ -107,7 +107,7 @@ class Trainer:
             out = json.dumps(self.model_info, indent=4)
             f.write(out)
 
-        torch.save(model.state_dict(), f"{path}.pt")
+        torch.save(model.state_dict(), f"models/{path}.pt")
 
     def train(
         self,
