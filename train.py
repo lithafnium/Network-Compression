@@ -18,6 +18,7 @@ import tqdm
 import numpy as np
 from scipy.io import mmread
 import json
+import matplotlib.pyplot as plt
 
 dtype = torch.float32
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -39,16 +40,30 @@ class EdgeDataset(Dataset):
 
 
 class Trainer:
-    def __init__(self, lr=1e-3, print_freq=1, max_layers=6, max_nodes=64, min_nodes=12):
+    def __init__(
+        self,
+        lr=1e-3,
+        print_freq=1,
+        min_layers=4,
+        max_layers=6,
+        max_nodes=100,
+        min_nodes=100,
+    ):
         self.criterion = nn.CrossEntropyLoss()
         self.graph_sizes = [100, 1000]
         self.graph_densities = [0.25, 0.5, 0.75]
-
+        self.min_layers = min_layers
         self.max_layers = max_layers
         self.max_nodes = max_nodes
         self.min_nodes = min_nodes
 
         self.model_info = {}
+
+    def save_plot(self, path, loss_values, num_epochs):
+        print(loss_values)
+        plt.clf()
+        plt.plot([i + 1 for i in range(num_epochs)], loss_values)
+        plt.savefig(f"plots/{path}.png")
 
     def get_data(self, path):
         a = mmread(path)
@@ -89,6 +104,9 @@ class Trainer:
         self.model_info[path] = {
             "accuracy": (val_acc / len(val_dataloader)).item(),
         }
+        with open(f"accuracy/{path}-accuracy.json", "w") as f:
+            out = json.dumps(self.model_info, indent=4)
+            f.write(out)
 
         torch.save(model.state_dict(), f"{path}.pt")
 
@@ -102,6 +120,8 @@ class Trainer:
         batch_size=16,
     ):
         optimizer = optim.Adam(model.parameters(), lr=1e-3)
+        loss = []
+        print(f"training model {path}")
         for epoch_i in tqdm.trange(epochs):
             # print(f"Beginning epoch {epoch_i + 1} of {epochs}")
 
@@ -121,10 +141,11 @@ class Trainer:
                 optimizer.step()
 
                 train_epoch_loss += train_loss.item() * x_train_batch.size(0)
+            loss.append(train_epoch_loss)
             # print(
             #     f"Epoch {epoch_i + 1}: | Train Loss: {train_epoch_loss/len(train_dataloader.sampler):.5f} "
             # )
-
+        self.save_plot(path, loss, epochs)
         self.eval(model, val_dataloader, path)
 
         # torch.save(model.state_dict(), f"./models/{path}.pt")
@@ -149,8 +170,8 @@ class Trainer:
                     batch_size=batch_size,
                 )
 
-                for num_layers in range(1, self.max_layers + 1):
-                    for num_nodes in range(self.min_nodes, self.max_nodes + 1):
+                for num_layers in range(self.min_layers, self.max_layers + 1):
+                    for num_nodes in range(self.min_nodes, self.max_nodes + 1, 5):
                         model = GraphModel(
                             2, 2, num_layers=num_layers, num_nodes=num_nodes
                         )
