@@ -1,14 +1,23 @@
 import argparse
-import numpy as np
 import networkx as nx
-import scipy as sp
-import scipy.io
-import csv
+import scipy.io as io
 
 
 def generate_graph(nodes: int, density: float):
-    print(nodes, density)
+    print(f"Nodes: ({nodes}), Density: ({density})")
     G = nx.fast_gnp_random_graph(nodes, density)
+    adj = nx.to_numpy_array(G)
+    return adj
+
+
+# TODO(Leonard): figure out how to control for density in this setting
+def generate_non_random_graph(nodes: int):
+
+    deg = [(1, 0), (1, 0), (1, 0), (2, 0), (1, 0), (2, 1), (0, 1), (0, 1)]
+    G = nx.random_clustered_graph(deg)
+
+def generate_small_world_graph(nodes: int, density: float):
+    G = nx.newman_watts_strogatz_graph(nodes, int(0.2 * nodes), density)
     adj = nx.to_numpy_array(G)
     return adj
 
@@ -24,5 +33,7 @@ if __name__ == "__main__":
     n = args.nodes
     d = args.density
 
-    adj = generate_graph(n, d)
-    sp.io.mmwrite(f"graph-{n}-{d}.mtx", adj)
+    # adj = generate_graph(n, d)
+    adj = generate_small_world_graph(n, d)
+    # io.mmwrite(f"graph-{n}-{d}.mtx", adj)
+    io.mmwrite(f"graph-{n}-{d}-small-world.mtx", adj)

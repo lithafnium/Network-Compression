@@ -15,9 +15,9 @@ from torch import nn
 class GraphModel(nn.Module):
     def __init__(self, num_features, num_classes, num_layers, num_nodes):
         super().__init__()
-        layers = []
-        layers.append(nn.Linear(num_features, 10000))
-        layers.append(nn.Linear(10000, num_classes))
+        # layers = []
+        # layers.append(nn.Linear(num_features, 10000))
+        # layers.append(nn.Linear(10000, num_classes))
         # layers.append(nn.ReLU())
         # layers.append(nn.Linear(8, 16))
         # layers.append(nn.ReLU())
@@ -32,7 +32,7 @@ class GraphModel(nn.Module):
         # layers.append(nn.Linear(16, 8))
         # layers.append(nn.ReLU())
         # layers.append(nn.Linear(8, num_classes))
-        self.net = nn.Sequential(*layers)
+        # self.net = nn.Sequential(*layers)
         # # diff = max_nodes - min_nodes
         # # for i in range(num_layers):
         # #     if i < num_layers / 2:
@@ -49,6 +49,21 @@ class GraphModel(nn.Module):
 
         # self.net = nn.Sequential(*layers)
         # self.output = nn.Linear(num_nodes, num_classes)
+
+
+        # Leonard decompress exps
+        layers = []
+        max_throughput = num_features * 256
+        while num_features < max_throughput:        
+            layers.append(nn.Linear(num_features, num_features * 2))
+            layers.append(nn.ReLU())
+            num_features *= 2
+        while num_features > num_classes:
+            layers.append(nn.Linear(num_features, num_features // 2))
+            layers.append(nn.ReLU())
+            num_features = num_features // 2
+
+        self.net = nn.Sequential(*layers)
 
     def forward(self, x):
         x = self.net(x)
