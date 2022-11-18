@@ -234,12 +234,13 @@ class Trainer:
             batch_size=self.batch_size,
         )
 
+        # TODO(leonard): fix this hackkyy ass code
+        data_path = data_path.strip("data/")
         self.train(
             model,
             train_dataloader,
             evaluation_dataloader,
             epochs=self.epochs,
-            # path=f"squeeze-model-{num_layers}-{num_nodes}-{graph_size}-{graph_density}",
             # Should also record type of data we ran on, e.g. {Erdos-Renyi} or {Small-World}, 
             # and whether or not we oversampled or not: e.g. {Oversampled} or {}
             # Ordering: model specs -- 
