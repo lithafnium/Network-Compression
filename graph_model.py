@@ -18,7 +18,7 @@ class BlockModel(nn.Module):
         layers = []
         layers.append(nn.Linear(num_features, 10000))
         layers.append(nn.Linear(10000, num_classes))
-        
+
         # diff = max_nodes - min_nodes
         # for i in range(num_layers):
         #     if i < num_layers / 2:
@@ -36,14 +36,14 @@ class BlockModel(nn.Module):
         # self.net = nn.Sequential(*layers)
         # self.output = nn.Linear(num_nodes, num_classes)
 
+        self.model_name = "block"
+
     def forward(self, x):
         x = self.net(x)
-        # x = self.output(x)
-
         return x
 
 
-class UnSqueeze():
+class UnSqueeze(nn.Module):
     def __init__(self, num_features=2, num_classes=2, max_throughput_multiplier=256):
         super().__init__()
         layers = []
@@ -61,6 +61,8 @@ class UnSqueeze():
         print("Unsqueeze final layer num_features ", num_features)
         print("Unsqueeze final layer num_features // 2 ", num_features // 2)
         self.net = nn.Sequential(*layers)
+
+        self.model_name = "unsqueeze"
 
     def forward(self, x):
         x = self.net(x)

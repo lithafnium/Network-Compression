@@ -44,6 +44,9 @@ class Trainer:
     def __init__(
         self,
         lr=1e-3,
+        batch_size=16,
+        epochs=100,
+        oversample=False,
         print_freq=1,
         min_layers=4,
         max_layers=4,
@@ -60,6 +63,11 @@ class Trainer:
         self.max_nodes = max_nodes
         self.min_nodes = min_nodes
 
+        self.lr = lr
+        self.epochs = epochs
+        self.batch_size = batch_size
+        self.oversample = oversample
+
         self.model_info = {}
 
     def save_plot(self, path, loss_values, num_epochs):
@@ -67,7 +75,7 @@ class Trainer:
         plt.plot([i + 1 for i in range(num_epochs)], loss_values)
         plt.savefig(f"plots/{path}.png")
 
-    def get_data(self, path, oversample=False):
+    def get_data(self, path):
         """ 
         Read and load a mtx file as EdgeDataset 
         """
@@ -84,33 +92,37 @@ class Trainer:
                 # TODO(Leonard): clean up this oversampling code; i.e. if oversample: then
                 if a[i][j] == 1:
                     labels.append(1)
-                    add_ones.append([i,j])
-                    ones += 1
+                    if self.oversample:
+                        add_ones.append([i,j])
+                        ones += 1
                 else:
                     labels.append(0)
-                    add_zeros.append([i,j])
-                    zeros += 1
-        # TODO(Leonard): same here, clean up this oversampling code
+                    if self.oversample:
+                        add_zeros.append([i,j])
+                        zeros += 1
+        
         og_labels = np.array(copy.deepcopy(labels))
         og_edges = np.array(copy.deepcopy(edges))
-        if ones < zeros:
-            while ones < zeros:
-                edges.append(random.choice(add_ones))
-                labels.append(1)
-                ones += 1
-        else:
-            while ones < zeros:
-                edges.append(random.choice(add_zeros))
-                labels.append(0)
-                zeros += 1
-        labels = np.array(labels)
-        edges = np.array(edges)
-        print("labels one???", sum(labels))
-        print("labels total???", len(labels))
+
+        if self.oversample:
+            if ones < zeros:
+                while ones < zeros:
+                    edges.append(random.choice(add_ones))
+                    labels.append(1)
+                    ones += 1
+            else:
+                while ones < zeros:
+                    edges.append(random.choice(add_zeros))
+                    labels.append(0)
+                    zeros += 1
+            labels = np.array(labels)
+            edges = np.array(edges)
+
+        print("One Labels:", sum(labels))
+        print("Total Labels:", len(labels))
 
         train_dataset = EdgeDataset(edges, labels)
         val_dataset = EdgeDataset(og_edges, og_labels)
-        # val_dataset = EdgeDataset(edges, labels)
         return train_dataset, val_dataset
 
     def eval(self, model, val_dataloader: DataLoader, path: str):
@@ -156,7 +168,7 @@ class Trainer:
     ):
         optimizer = optim.Adam(model.parameters(), lr=1e-3)
         loss = []
-        print(f"training model {path}")
+        print(f"Data path: {path}")
         # for epoch_i in tqdm.trange(epochs):
         for epoch_i in range(epochs):
             # print(f"Beginning epoch {epoch_i + 1} of {epochs}")
@@ -198,17 +210,20 @@ class Trainer:
                 f"Epoch {epoch_i + 1}: | Train Loss: {avg_loss:.5f} "
             )
             print("Model accuracy: {:.3f}%".format((train_acc / len(train_dataloader)).item()))
-        self.save_plot(path, loss, epochs)
+        # TODO(leonard): fix this hacky af trick
+        plot_path = path.strip(".mtx")
+        print("plot_path" , plot_path)
+        self.save_plot(plot_path, loss, epochs)
         self.eval(model, val_dataloader, path)
 
         # torch.save(model.state_dict(), f"./models/{path}.pt")
 
-    def train_and_eval_single_graph_with_model(self, model, data_path=None, batch_size=16, epochs=1000):
+    def train_and_eval_single_graph_with_model(self, model, data_path):
         train_dataset, val_dataset = self.get_data(data_path)
         train_dataloader = DataLoader(
             train_dataset,
             sampler=RandomSampler(train_dataset),  # Sampling for training is random
-            batch_size=batch_size,
+            batch_size=self.batch_size,
         )
 
         evaluation_dataloader = DataLoader(
@@ -216,27 +231,27 @@ class Trainer:
             sampler=SequentialSampler(
                 val_dataset
             ),  # Sampling for validation is sequential as the order doesn't matter.
-            batch_size=batch_size,
+            batch_size=self.batch_size,
         )
 
         self.train(
             model,
             train_dataloader,
             evaluation_dataloader,
-            epochs=epochs,
+            epochs=self.epochs,
             # path=f"squeeze-model-{num_layers}-{num_nodes}-{graph_size}-{graph_density}",
             # Should also record type of data we ran on, e.g. {Erdos-Renyi} or {Small-World}, 
             # and whether or not we oversampled or not: e.g. {Oversampled} or {}
             # Ordering: model specs -- 
             # Should also save training specs 
             # All this would be solved if we used WANDB
-            path="unsqueeze-regularsample-ErdosRenyi-100-0.25"
+            path=f"{model.model_name}-oversample{self.oversample}-{data_path}"
         )
         
 
     # TODO(leonard): def this out to run single experiments instead of things in loops
     # Def out graph and model layers; specify model first, then data
-    def train_and_eval_all_graphs_and_models(self, batch_size=16, epochs=1000):
+    def train_and_eval_all_graphs_and_models(self):
         """
         Run experiments across all types of graph data and models
         """
@@ -247,10 +262,10 @@ class Trainer:
                 # data_path = f"data/graph-{graph_size}-{graph_density}-small-world.mtx"
                 print(f"Grabbing {data_path}")
                 
-                model = UnSqueeze(2, 2)
+                model = UnSqueeze()
                 model.to(device)
                 # model = torch.nn.DataParallel(model)
-                self.train_and_eval_single_graph_with_model(model, data_path, batch_size, epochs)
+                self.train_and_eval_single_graph_with_model(model, data_path)
 
                 # for num_layers in range(self.min_layers, self.max_layers + 1):
                 #     num_nodes = self.min_nodes
