@@ -12,61 +12,57 @@ from torch.utils.data import (
 from torch import nn
 
 
-class GraphModel(nn.Module):
+class BlockModel(nn.Module):
     def __init__(self, num_features, num_classes, num_layers, num_nodes):
         super().__init__()
-        # layers = []
-        # layers.append(nn.Linear(num_features, 10000))
-        # layers.append(nn.Linear(10000, num_classes))
-        # layers.append(nn.ReLU())
-        # layers.append(nn.Linear(8, 16))
-        # layers.append(nn.ReLU())
-        # layers.append(nn.Linear(16, 32))
-        # layers.append(nn.ReLU())
-        # layers.append(nn.Linear(32, 64))
-        # layers.append(nn.ReLU())
-        # layers.append(nn.Linear(64, 32))
-        # layers.append(nn.ReLU())
-        # layers.append(nn.Linear(32, 16))
-        # layers.append(nn.ReLU())
-        # layers.append(nn.Linear(16, 8))
-        # layers.append(nn.ReLU())
-        # layers.append(nn.Linear(8, num_classes))
-        # self.net = nn.Sequential(*layers)
-        # # diff = max_nodes - min_nodes
-        # # for i in range(num_layers):
-        # #     if i < num_layers / 2:
-        # #         if i == 0:
-        # #             layer_dim_in = num_features
-        # #             layer_dim_out = min_nodes
-        # #         else:
-        # #             layer_dim_in
-        # #     # is_first = i == 0
-        # #     # layer_dim_in = num_features if is_first else num_nodes
-        # #     # layer_dim_in = min_nodes if is_first else
-        # #     layers.append(nn.Linear(layer_dim_in, num_nodes))
-        # #     layers.append(nn.LeakyReLU())
+        layers = []
+        layers.append(nn.Linear(num_features, 10000))
+        layers.append(nn.Linear(10000, num_classes))
+        
+        # diff = max_nodes - min_nodes
+        # for i in range(num_layers):
+        #     if i < num_layers / 2:
+        #         if i == 0:
+        #             layer_dim_in = num_features
+        #             layer_dim_out = min_nodes
+        #         else:
+        #             layer_dim_in
+        #     # is_first = i == 0
+        #     # layer_dim_in = num_features if is_first else num_nodes
+        #     # layer_dim_in = min_nodes if is_first else
+        #     layers.append(nn.Linear(layer_dim_in, num_nodes))
+        #     layers.append(nn.LeakyReLU())
 
         # self.net = nn.Sequential(*layers)
         # self.output = nn.Linear(num_nodes, num_classes)
 
+    def forward(self, x):
+        x = self.net(x)
+        # x = self.output(x)
 
-        # Leonard decompress exps
+        return x
+
+
+class UnSqueeze():
+    def __init__(self, num_features=2, num_classes=2, max_throughput_multiplier=256):
+        super().__init__()
         layers = []
-        max_throughput = num_features * 256
+        max_throughput = num_features * max_throughput_multiplier
         while num_features < max_throughput:        
             layers.append(nn.Linear(num_features, num_features * 2))
             layers.append(nn.ReLU())
             num_features *= 2
-        while num_features > num_classes:
+        while num_features > num_classes * 2:
             layers.append(nn.Linear(num_features, num_features // 2))
-            layers.append(nn.ReLU())
             num_features = num_features // 2
 
+        layers.append(nn.Linear(num_features, num_features // 2))
+        
+        print("Unsqueeze final layer num_features ", num_features)
+        print("Unsqueeze final layer num_features // 2 ", num_features // 2)
         self.net = nn.Sequential(*layers)
 
     def forward(self, x):
         x = self.net(x)
-        # x = self.output(x)
 
         return x
