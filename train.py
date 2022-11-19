@@ -54,9 +54,9 @@ class Trainer:
         min_nodes=16,
     ):
         self.criterion = nn.CrossEntropyLoss()
-        self.graph_sizes = [100, 1000]
-        # self.graph_sizes = [1000]
-        self.graph_densities = [0.25, 0.5, 0.75]
+        # self.graph_sizes = [100, 1000]
+        self.graph_sizes = [100]
+        self.graph_densities = [0.05, 0.1, 0.25, 0.5, 0.75]
         # self.graph_densities = [0.5, 0.75]
         self.min_layers = min_layers
         self.max_layers = max_layers
