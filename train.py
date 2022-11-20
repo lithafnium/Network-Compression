@@ -32,10 +32,6 @@ torch.set_default_tensor_type(
 
 SMALL_WORLD = "small-world"
 ERDOS_RENYI = "erdos-renyi"
-<<<<<<< HEAD
-
-=======
->>>>>>> 4032e3d9c0a9d34761875f340c40b962b5972040
 
 class EdgeDataset(Dataset):
     def __init__(self, edges, labels):
@@ -288,43 +284,25 @@ class Trainer:
                     raise Exception('Data type not handled')
 
                 print(f"Grabbing {data_path}")
+                
+                model = UnSqueeze()
+                model.to(device)
+
                 wandb.init(project="training-runs", entity="cs222", config={
                     "learning_rate": self.lr,
                     "epochs": self.epochs,
                     "batch_size": self.batch_size,
                     "graph_size": graph_size, 
                     "graph_density": graph_density,
-                    "graph_file": data_path
+                    "graph_file": data_path,
+                    "model_name": model.model_name,
+                    "oversampling": self.oversample
                 })
-                
-                model = UnSqueeze()
-                model.to(device)
+                wandb.run.name = f"{model.model_name}-oversample{self.oversample}-{data_path}"
+                wandb.run.save()
                 # model = torch.nn.DataParallel(model)
                 self.train_and_eval_single_graph_with_model(model, data_path)
 
-                # for num_layers in range(self.min_layers, self.max_layers + 1):
-                #     num_nodes = self.min_nodes
-                #     while num_nodes <= self.max_nodes:
-                #         model = GraphModel(
-                #             2, 2, num_layers=num_layers, num_nodes=num_nodes
-                #         )
-                #         model.to(device)
-                #         # model = torch.nn.DataParallel(model)
-                #         self.train(
-                #             model,
-                #             train_dataloader,
-                #             evaluation_dataloader,
-                #             epochs=epochs,
-                #             # path=f"squeeze-model-{num_layers}-{num_nodes}-{graph_size}-{graph_density}",
-                #             # Should also record type of data we ran on, e.g. {Erdos-Renyi} or {Small-World}, 
-                #             # and whether or not we oversampled or not: e.g. {Oversampled} or {}
-                #             # Ordering: model specs -- 
-                #             # Should also save training specs 
-                #             path="unsqueeze-regularsample-ErdosRenyi-100-0.25"
-                #         )
-                #         num_nodes *= 2
-
-                
 
         print("Saving output loss and size estimates...")
 
