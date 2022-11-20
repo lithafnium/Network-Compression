@@ -1,5 +1,7 @@
-*.mtx
+# *.mtx
 *.csv
 *.pt
-
+*.json
+*.png
 __pycache__/*
+wandb/
