@@ -17,6 +17,7 @@ def generate_non_random_graph(nodes: int):
     G = nx.random_clustered_graph(deg)
 
 def generate_small_world_graph(nodes: int, density: float):
+    print(f"Small World ---- Nodes: ({nodes}), Density: ({density})")
     G = nx.newman_watts_strogatz_graph(nodes, int(0.2 * nodes), density)
     adj = nx.to_numpy_array(G)
     return adj
@@ -33,7 +34,7 @@ if __name__ == "__main__":
     n = args.nodes
     d = args.density
 
-    adj = generate_erdos_renyi(n, d)
-    # adj = generate_small_world_graph(n, d)
-    io.mmwrite(f"graph-{n}-{d}-Erdos-Renyi.mtx", adj)
-    # io.mmwrite(f"graph-{n}-{d}-small-world.mtx", adj)
+    # adj = generate_erdos_renyi(n, d)
+    adj = generate_small_world_graph(n, d)
+    # io.mmwrite(f"graph-{n}-{d}-Erdos-Renyi.mtx", adj)
+    io.mmwrite(f"graph-{n}-{d}-small-world.mtx", adj)

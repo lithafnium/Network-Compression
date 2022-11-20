@@ -107,7 +107,7 @@ def eval(model: ToyModel, val_dataloader):
 
     print("Model accuracy: {:.3f}%".format((val_acc / len(val_dataloader)).item()))
 
-
+# TODO: deprecate?
 def read_data(path):
     a = mmread(path).toarray()
     # adj = np.zeros((max_id, max_id), dtype=int)

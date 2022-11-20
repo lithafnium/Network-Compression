@@ -27,6 +27,8 @@ torch.set_default_tensor_type(
     "torch.cuda.FloatTensor" if torch.cuda.is_available() else "torch.FloatTensor"
 )
 
+SMALL_WORLD = "small-world"
+ERDOS_RENYI = "erdos-renyi"
 
 class EdgeDataset(Dataset):
     def __init__(self, edges, labels):
@@ -47,6 +49,7 @@ class Trainer:
         batch_size=16,
         epochs=100,
         oversample=False,
+        data_type=SMALL_WORLD,
         print_freq=1,
         min_layers=4,
         max_layers=4,
@@ -67,6 +70,7 @@ class Trainer:
         self.epochs = epochs
         self.batch_size = batch_size
         self.oversample = oversample
+        self.data_type = data_type
 
         self.model_info = {}
 
@@ -224,6 +228,9 @@ class Trainer:
             train_dataset,
             sampler=RandomSampler(train_dataset),  # Sampling for training is random
             batch_size=self.batch_size,
+            # multiprocessing_context='spawn',
+            # pin_memory=True,
+            # num_workers=2,
         )
 
         evaluation_dataloader = DataLoader(
@@ -232,6 +239,9 @@ class Trainer:
                 val_dataset
             ),  # Sampling for validation is sequential as the order doesn't matter.
             batch_size=self.batch_size,
+            # multiprocessing_context='spawn',
+            # pin_memory=True,
+            # num_workers=2,
         )
 
         # TODO(leonard): fix this hackkyy ass code
@@ -259,8 +269,15 @@ class Trainer:
 
         for graph_size in self.graph_sizes:
             for graph_density in self.graph_densities:
-                data_path = f"data/graph-{graph_size}-{graph_density}-Erdos-Renyi.mtx"
-                # data_path = f"data/graph-{graph_size}-{graph_density}-small-world.mtx"
+                
+                # TODO(ltang): fix this hacky as shit:
+                if self.data_type == ERDOS_RENYI:
+                    data_path = f"data/graph-{graph_size}-{graph_density}-Erdos-Renyi.mtx"
+                elif self.data_type == SMALL_WORLD:
+                    data_path = f"data/graph-{graph_size}-{graph_density}-small-world.mtx"
+                else:
+                    raise Exception('Data type not handled')
+
                 print(f"Grabbing {data_path}")
                 
                 model = UnSqueeze()
