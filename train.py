@@ -32,7 +32,10 @@ torch.set_default_tensor_type(
 
 SMALL_WORLD = "small-world"
 ERDOS_RENYI = "erdos-renyi"
+<<<<<<< HEAD
 
+=======
+>>>>>>> 4032e3d9c0a9d34761875f340c40b962b5972040
 
 class EdgeDataset(Dataset):
     def __init__(self, edges, labels):
