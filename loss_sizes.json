@@ -1,8 +1,17 @@
 {
-    "unsqueeze-oversampleFalse-graph-100-0.5-small-world.mtx": {
-        "accuracy": 74.90445709228516
+    "block-oversampleFalse-graph-100-0.05-small-world.mtx": {
+        "accuracy": 95.5350341796875
     },
-    "unsqueeze-oversampleFalse-graph-100-0.75-small-world.mtx": {
-        "accuracy": 82.21018981933594
+    "block-oversampleFalse-graph-100-0.1-small-world.mtx": {
+        "accuracy": 96.84713745117188
+    },
+    "block-oversampleFalse-graph-100-0.25-small-world.mtx": {
+        "accuracy": 94.8216552734375
+    },
+    "block-oversampleFalse-graph-100-0.5-small-world.mtx": {
+        "accuracy": 79.80892181396484
+    },
+    "block-oversampleFalse-graph-100-0.75-small-world.mtx": {
+        "accuracy": 83.0
     }
 }

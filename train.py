@@ -285,13 +285,14 @@ class Trainer:
 
                 print(f"Grabbing {data_path}")
                 
-                model = UnSqueeze()
+                model = BlockModel(num_features=2, num_classes=2, num_layers=6, num_nodes=64)
                 model.to(device)
 
                 wandb.init(project="training-runs", entity="cs222", config={
                     "learning_rate": self.lr,
                     "epochs": self.epochs,
                     "batch_size": self.batch_size,
+                    "data_type": self.data_type,
                     "graph_size": graph_size, 
                     "graph_density": graph_density,
                     "graph_file": data_path,

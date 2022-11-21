@@ -26,6 +26,7 @@ class BlockModel(nn.Module):
           layers.append(nn.ReLU())
         
         layers = layers[0:len(layers) - 1]
+        self.net = nn.Sequential(*layers)
 
         self.model_name = "block"
 
