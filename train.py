@@ -62,8 +62,10 @@ class Trainer:
         self.criterion = nn.CrossEntropyLoss()
         # self.graph_sizes = [100, 1000]
         self.graph_sizes = [100]
-        self.graph_densities = [0.05, 0.1, 0.25, 0.5, 0.75]
-        # self.graph_densities = [0.5, 0.75]
+        # self.graph_densities = [0.05, 0.1, 0.25, 0.5, 0.75]
+        # self.graph_densities = [0.040, 0.101, 0.505, 0.747]
+        self.graph_densities = [0.242]
+        self.small_world_p = [0.5]
         self.min_layers = min_layers
         self.max_layers = max_layers
         self.max_nodes = max_nodes
@@ -274,35 +276,39 @@ class Trainer:
 
         for graph_size in self.graph_sizes:
             for graph_density in self.graph_densities:
-                
-                # TODO(ltang): fix this hacky as shit:
-                if self.data_type == ERDOS_RENYI:
-                    data_path = f"data/graph-{graph_size}-{graph_density}-Erdos-Renyi.mtx"
-                elif self.data_type == SMALL_WORLD:
-                    data_path = f"data/graph-{graph_size}-{graph_density}-small-world.mtx"
-                else:
-                    raise Exception('Data type not handled')
+                # Keeping this so it aligns with the .3f file names, fix in the future
+                graph_density = format(graph_density, '.3f')
 
-                print(f"Grabbing {data_path}")
-                
-                model = BlockModel(num_features=2, num_classes=2, num_layers=6, num_nodes=64)
-                model.to(device)
+                for p in self.small_world_p: 
+                    # TODO(ltang): fix this hacky ass shit:
+                    # In the future, generate these on the fly instead of saving files then loading
+                    if self.data_type == ERDOS_RENYI:
+                        data_path = f"data/graph-{graph_size}-{graph_density}-Erdos-Renyi-p-{p}.mtx"
+                    elif self.data_type == SMALL_WORLD:
+                        data_path = f"data/graph-{graph_size}-{graph_density}-small-world-p-{p}.mtx"
+                    else:
+                        raise Exception('Data type not handled')
 
-                wandb.init(project="training-runs", entity="cs222", config={
-                    "learning_rate": self.lr,
-                    "epochs": self.epochs,
-                    "batch_size": self.batch_size,
-                    "data_type": self.data_type,
-                    "graph_size": graph_size, 
-                    "graph_density": graph_density,
-                    "graph_file": data_path,
-                    "model_name": model.model_name,
-                    "oversampling": self.oversample
-                })
-                wandb.run.name = f"{model.model_name}-oversample{self.oversample}-{data_path}"
-                wandb.run.save()
-                # model = torch.nn.DataParallel(model)
-                self.train_and_eval_single_graph_with_model(model, data_path)
+                    print(f"Grabbing {data_path}")
+                    
+                    model = BlockModel(num_features=2, num_classes=2, num_layers=5, num_nodes=64)
+                    model.to(device)
+
+                    wandb.init(project="training-runs", entity="cs222", config={
+                        "learning_rate": self.lr,
+                        "epochs": self.epochs,
+                        "batch_size": self.batch_size,
+                        "graph_size": graph_size, 
+                        "graph_density": graph_density,
+                        "graph_file": data_path,
+                        "model_name": model.model_name,
+                        "oversampling": self.oversample,
+                        "graph_type": self.data_type,
+                    })
+                    wandb.run.name = f"{model.model_name}-oversample{self.oversample}-{data_path}"
+                    wandb.run.save()
+                    # model = torch.nn.DataParallel(model)
+                    self.train_and_eval_single_graph_with_model(model, data_path)
 
 
         print("Saving output loss and size estimates...")

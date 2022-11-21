@@ -19,6 +19,7 @@ def generate_non_random_graph(nodes: int):
 def generate_small_world_graph(nodes: int, density: float):
     print(f"Small World ---- Nodes: ({nodes}), Density: ({density})")
     G = nx.newman_watts_strogatz_graph(nodes, int(0.2 * nodes), density)
+    print("Graph density:", G.density())
     adj = nx.to_numpy_array(G)
     return adj
 
