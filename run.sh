@@ -5,4 +5,5 @@ conda activate cs222
 echo "Redirecting into proper directory"
 cd /data/leonardtang/cs222proj
 echo "Starting training and evaluation..."
-python ./main.py --data-type=small-world
+# python ./main.py --data-type=small-world --oversample
+python ./main.py --data-type=small-world 
