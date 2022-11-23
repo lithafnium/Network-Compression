@@ -1,8 +1,8 @@
 {
-    "unsqueeze-oversampleFalse-graph-100-0.5-small-world.mtx": {
-        "accuracy": 74.90445709228516
+    "siren-oversampleFalse-graph-100-0.040-small-world-p-0.5.mtx": {
+        "accuracy": 95.87898254394531
     },
-    "unsqueeze-oversampleFalse-graph-100-0.75-small-world.mtx": {
-        "accuracy": 82.21018981933594
+    "siren-oversampleFalse-graph-100-0.101-small-world-p-0.5.mtx": {
+        "accuracy": 89.96815490722656
     }
 }
