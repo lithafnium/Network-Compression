@@ -77,3 +77,26 @@ class WideNet(nn.Module):
     def forward(self, x):
         x = self.net(x)
         return x
+    
+# Pray that this works; pass in two one-hot encodings instead of two numbers
+# Could also envision passing in the "one_hot" param into any of the other models
+class OneHotNet(nn.Module):
+    def __init__(self, num_features, num_classes=2, width=100):
+        super().__init__()
+        self.model_name = "onehotnet"
+        # TODO(ltang) -- try periodic activation function
+        layers = []
+        layers.append(nn.Linear(num_features, num_features * 2))
+        layers.append(nn.GELU())
+        layers.append(nn.Linear(num_features * 2, num_features * 2))
+        layers.append(nn.GELU())
+        layers.append(nn.Linear(num_features * 2, num_features * 2))
+        layers.append(nn.GELU())
+        layers.append(nn.Linear(num_features * 2, num_features * 2))
+        layers.append(nn.GELU())
+        layers.append(nn.Linear(num_features * 2, num_classes))
+        self.net = nn.Sequential(*layers)
+
+    def forward(self, x):
+        x = self.net(x)
+        return x

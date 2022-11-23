@@ -11,7 +11,7 @@ from torch.utils.data import (
 
 from collections import defaultdict
 
-from graph_model import BlockModel, UnSqueeze, WideNet
+from graph_model import BlockModel, UnSqueeze, WideNet, OneHotNet
 from size_estimator import SizeEstimator
 import tqdm
 import math
@@ -28,9 +28,6 @@ from scipy.io import mmread
 
 dtype = torch.float32
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-# torch.set_default_tensor_type(
-#     "torch.cuda.FloatTensor" if torch.cuda.is_available() else "torch.FloatTensor"
-# )
 
 SMALL_WORLD = "small-world"
 ERDOS_RENYI = "erdos-renyi"
@@ -61,12 +58,14 @@ class Trainer:
         max_nodes=64,
         min_nodes=64,
         num_workers=32,
+        one_hot=False,
     ):
         self.criterion = nn.CrossEntropyLoss()
-        # self.graph_sizes = [100, 1000]
-        self.graph_sizes = [1000]
-        self.graph_densities = [0.050, 0.100, 0.250, 0.501]
-        # self.graph_densities = [0.040, 0.101, 0.242, 0.505, 0.747]
+        self.graph_sizes = [100]
+        # self.graph_sizes = [1000]
+        # self.graph_densities = [0.050, 0.100, 0.250, 0.501]
+        # self.graph_densities = [0.100, 0.250, 0.501]
+        self.graph_densities = [0.040, 0.101, 0.242, 0.505, 0.747]
         self.small_world_p = [0.5]
         self.min_layers = min_layers
         self.max_layers = max_layers
@@ -74,10 +73,16 @@ class Trainer:
         self.min_nodes = min_nodes
 
         self.lr = lr
+        # Pulled momentum and WD values from PixMix
+        self.momentum = 0.9
+        self.weight_decay = 5e-4
+        
         self.epochs = epochs
         self.batch_size = batch_size
         self.oversample = oversample
         self.data_type = data_type
+
+        self.one_hot = one_hot
 
         self.num_workers = num_workers
         self.model_info = {}
@@ -120,9 +125,18 @@ class Trainer:
         add_ones, add_zeros = [], []
         ones = 0
         zeros = 0
+        # Try only one direction edge information
         for i in range(len(a)):
-            for j in range(len(a)):
-                edges.append([i, j])
+            print("i:", i)
+            for j in range(i, len(a)):
+                if self.one_hot:
+                    i_one_hot, j_one_hot = np.zeros(len(a)), np.zeros(len(a))
+                    i_one_hot[i] = 1
+                    j_one_hot[j] = 1
+                    # Try concatenating lmao
+                    edges.append(np.concatenate((i_one_hot, j_one_hot)))
+                else:
+                    edges.append([i, j])
                 # TODO(Leonard): clean up this oversampling code; i.e. if oversample: then
                 if a[i][j] == 1:
                     labels.append(1)
@@ -140,13 +154,19 @@ class Trainer:
 
         if self.oversample:
             if ones < zeros:
+                # print("zeros", zeros)
+                # print("ones", ones)
+                # print("len add_ones", len(add_ones))
                 while ones < zeros:
+                    # TODO: maybe should just directly copy instead of doing this random choice thing...
                     edges.append(random.choice(add_ones))
+                    # edges.append(add_ones.pop())
                     labels.append(1)
                     ones += 1
             else:
-                while ones < zeros:
+                while zeros < ones:
                     edges.append(random.choice(add_zeros))
+                    # edges.append(add_zeros.pop())
                     labels.append(0)
                     zeros += 1
             labels = np.array(labels)
@@ -178,7 +198,7 @@ class Trainer:
 
             val_acc += acc
 
-            val_loss = self.criterion(y_val_pred, y_val_batch)
+            val_loss = self.criterion(y_val_pred, b_labels)
             val_epoch_loss += val_loss.item() * y_val_batch.size(0)
         
         avg_loss = val_epoch_loss / len(val_dataloader.sampler)
@@ -189,7 +209,7 @@ class Trainer:
         self.model_info[path] = {
             "accuracy": (val_acc / len(val_dataloader)).item(),
         }
-        wandb.log({"loss": avg_loss, "accuracy": (val_acc / len(val_dataloader)).item()})
+        # wandb.log({"loss": avg_loss, "accuracy": (val_acc / len(val_dataloader)).item()})
 
         with open(f"accuracy/{path}-accuracy.json", "w") as f:
             out = json.dumps(self.model_info, indent=4)
@@ -205,13 +225,18 @@ class Trainer:
         epochs,
         path,
     ):
-        optimizer = optim.Adam(model.parameters(), lr=1e-3)
+        # optimizer = optim.Adam(model.parameters(), lr=1e-3)
+        optimizer = optim.SGD(
+                model.parameters(), 
+                self.lr,
+                momentum=self.momentum,
+                weight_decay=self.weight_decay, 
+                nesterov=True
+        )
         loss = []
         print(f"Data path: {path}")
         # for epoch_i in tqdm.trange(epochs):
         for epoch_i in range(epochs):
-            # print(f"Beginning epoch {epoch_i + 1} of {epochs}")
-
             train_epoch_loss = 0
             model.train()
 
@@ -223,11 +248,21 @@ class Trainer:
                 optimizer.zero_grad()
 
                 y_train_pred = model(b_nodes)
+                # print("y_train_pred", y_train_pred)
                 _, y_pred_tags = torch.max(y_train_pred, dim=1)
 
                 # print("b_labels", b_labels)
                 # print("y_pred_tags", y_pred_tags)
                 # print("y_train_pred", y_train_pred)
+
+                # one_pred = 0
+                # for pred in y_pred_tags:
+                #     if pred.item() == 1:
+                #         one_pred += 1
+                
+                # print("one Pred: ", one_pred)
+                # print("percent pred ones: ", one_pred / len(y_pred_tags))
+                # input()
 
                 train_loss = self.criterion(y_train_pred, b_labels)
                 # print("train_loss", train_loss)
@@ -235,11 +270,22 @@ class Trainer:
                 optimizer.step()
 
                 correct_pred = (y_pred_tags == b_labels).float()
+
+                # for i in range(len(y_pred_tags)):
+                #     if y_pred_tags[i] != b_labels[i]:
+                #         print("misclassified on input", x_train_batch[i])
+                #         print("predicted", y_pred_tags[i])
+                        # input()
+
                 acc = correct_pred.sum() / len(correct_pred)
                 acc = torch.round(acc * 100)
 
                 train_acc += acc
                 train_epoch_loss += train_loss.item() * x_train_batch.size(0)
+
+            # Sanity check, especially if oversampling and/or doing weird things to data
+            if epoch_i > 0 and epoch_i % 10 == 0:
+                self.eval(model, val_dataloader, path)
                 
             avg_loss = train_epoch_loss / len(train_dataloader.sampler)
             loss.append(avg_loss)
@@ -247,7 +293,7 @@ class Trainer:
                 f"Epoch {epoch_i + 1}: | Train Loss: {avg_loss:.5f} "
             )
             print("Model accuracy: {:.3f}%".format((train_acc / len(train_dataloader)).item()))
-            wandb.log({"loss": avg_loss, "accuracy": (train_acc / len(train_dataloader)).item()})
+            # wandb.log({"loss": avg_loss, "accuracy": (train_acc / len(train_dataloader)).item()})
         
         
         # TODO(leonard): fix this hacky af trick
@@ -256,7 +302,7 @@ class Trainer:
         self.save_plot(plot_path, loss, epochs)
         self.eval(model, val_dataloader, path)
     
-        wandb.finish()
+        # wandb.finish()
         # torch.save(model.state_dict(), f"./models/{path}.pt")
 
     def train_and_eval_single_graph_with_model(self, model, data_path):
@@ -317,26 +363,27 @@ class Trainer:
 
                     print(f"Grabbing {data_path}")
                     
-                    model = UnSqueeze(max_throughput_multiplier=1024)
+                    # model = UnSqueeze(max_throughput_multiplier=1024)
                     # model = WideNet(width=10000)
+                    model = OneHotNet(num_features=graph_size * 2)
                     model.to(device)
 
-                    wandb.init(project="training-runs", entity="cs222", config={
-                        "learning_rate": self.lr,
-                        "epochs": self.epochs,
-                        "batch_size": self.batch_size,
-                        "graph_size": graph_size, 
-                        "graph_density": graph_density,
-                        "graph_file": data_path,
-                        "model_name": model.model_name,
-                        "oversampling": self.oversample,
-                        "graph_type": self.data_type,
-                    })
-                    if model.model_name == "widenet":
-                        wandb.run.name = f"{model.model_name}-{model.width}-oversample{self.oversample}-{data_path}"
-                    else:
-                        wandb.run.name = f"{model.model_name}-oversample{self.oversample}-{data_path}"
-                    wandb.run.save()
+                    # wandb.init(project="training-runs", entity="cs222", config={
+                    #     "learning_rate": self.lr,
+                    #     "epochs": self.epochs,
+                    #     "batch_size": self.batch_size,
+                    #     "graph_size": graph_size, 
+                    #     "graph_density": graph_density,
+                    #     "graph_file": data_path,
+                    #     "model_name": model.model_name,
+                    #     "oversampling": self.oversample,
+                    #     "graph_type": self.data_type,
+                    # })
+                    # if model.model_name == "widenet":
+                    #     wandb.run.name = f"{model.model_name}-{model.width}-oversample{self.oversample}-{data_path}"
+                    # else:
+                    #     wandb.run.name = f"{model.model_name}-oversample{self.oversample}-{data_path}"
+                    # wandb.run.save()
                     # model = torch.nn.DataParallel(model)
                     self.train_and_eval_single_graph_with_model(model, data_path)
 
