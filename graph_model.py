@@ -23,9 +23,10 @@ class BlockModel(nn.Module):
           is_first = i == 0 
           layer_dim_in = num_features if is_first else num_nodes
           layers.append(nn.Linear(layer_dim_in, num_nodes))
-          layers.append(nn.ReLU())
+          layers.append(nn.Sigmoid())
         
         layers = layers[0:len(layers) - 1]
+        layers.append(nn.Linear(num_nodes, num_classes))
         self.net = nn.Sequential(*layers)
 
         self.model_name = "block"

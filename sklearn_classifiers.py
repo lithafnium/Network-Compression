@@ -35,7 +35,7 @@ if __name__ == "__main__":
     #     n_estimators=10, max_depth=None, min_samples_split=2, random_state=0
     # )
 
-    edges, labels = get_data("data/graph-100-0.5.mtx")
+    edges, labels = get_data("data/graph-100-0.040-small-world-p-0.5.mtx")
     clf.fit(edges, labels)
 
     # predicted = clf.predict([[0, 2], [0, 10]])

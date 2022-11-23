@@ -12,6 +12,8 @@ from torch.utils.data import (
 from collections import defaultdict
 
 from graph_model import BlockModel, UnSqueeze, WideNet
+from siren.siren import Siren
+
 from size_estimator import SizeEstimator
 import tqdm
 import math
@@ -24,6 +26,8 @@ import copy
 import wandb
 from time import time
 from scipy.io import mmread
+
+
 
 
 dtype = torch.float32
@@ -109,7 +113,7 @@ class Trainer:
         print("Done testing for optimal num_workers")
         return best_workers
 
-    def get_data(self, path):
+    def get_data(self, path, oversample_p=1.0):
         """ 
         Read and load a mtx file as EdgeDataset 
         """
@@ -140,12 +144,12 @@ class Trainer:
 
         if self.oversample:
             if ones < zeros:
-                while ones < zeros:
+                while ones < int(zeros * oversample_p):
                     edges.append(random.choice(add_ones))
                     labels.append(1)
                     ones += 1
             else:
-                while ones < zeros:
+                while zeros < int(ones * oversample_p):
                     edges.append(random.choice(add_zeros))
                     labels.append(0)
                     zeros += 1
@@ -260,9 +264,7 @@ class Trainer:
         # torch.save(model.state_dict(), f"./models/{path}.pt")
 
     def train_and_eval_single_graph_with_model(self, model, data_path):
-        train_dataset, val_dataset = self.get_data(data_path)
-        # num_workers = self.find_optimal_num_workers(train_dataset)
-
+        train_dataset, val_dataset = self.get_data(data_path, oversample_p=0.538)
         train_dataloader = DataLoader(
             train_dataset,
             # sampler=RandomSampler(train_dataset),  # Sampling for training is random
@@ -317,9 +319,10 @@ class Trainer:
 
                     print(f"Grabbing {data_path}")
                     
-                    model = BlockModel(num_features=2, num_classes=2, num_layers=5, num_nodes=64)
                     # model = UnSqueeze(max_throughput_multiplier=1024)
                     # model = WideNet(width=10000)
+                    model = Siren(dim_in=2, dim_hidden=128, dim_out=2, num_layers=12)
+                    # model = BlockModel(num_features=2, num_classes=2, num_layers=6, num_nodes=256)
                     model.to(device)
 
                     wandb.init(project="training-runs", entity="cs222", config={
@@ -337,6 +340,7 @@ class Trainer:
                         wandb.run.name = f"{model.model_name}-{model.width}-oversample{self.oversample}-{data_path}"
                     else:
                         wandb.run.name = f"{model.model_name}-oversample{self.oversample}-{data_path}"
+                    # wandb.run.name = f"40layers-{model.model_name}-oversample{self.oversample}-{data_path}"
                     wandb.run.save()
                     # model = torch.nn.DataParallel(model)
                     self.train_and_eval_single_graph_with_model(model, data_path)

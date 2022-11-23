@@ -115,6 +115,8 @@ class Siren(nn.Module):
             activation=final_activation,
         )
 
+        self.model_name = "siren"
+
     def forward(self, x):
         x = self.net(x)
         return self.last_layer(x)
