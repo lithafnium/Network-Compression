@@ -12,6 +12,7 @@ from torch.utils.data import (
 from collections import defaultdict
 
 from graph_model import BlockModel, UnSqueeze, WideNet, OneHotNet
+from siren.siren import Siren
 from size_estimator import SizeEstimator
 import tqdm
 import math
@@ -26,13 +27,12 @@ from time import time
 from scipy.io import mmread
 
 
-
-
 dtype = torch.float32
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 SMALL_WORLD = "small-world"
 ERDOS_RENYI = "erdos-renyi"
+
 
 class EdgeDataset(Dataset):
     def __init__(self, edges, labels):
@@ -67,7 +67,7 @@ class Trainer:
         # self.graph_sizes = [1000]
         # self.graph_densities = [0.050, 0.100, 0.250, 0.501]
         # self.graph_densities = [0.100, 0.250, 0.501]
-        self.graph_densities = [0.040, 0.101, 0.242, 0.505, 0.747]
+        self.graph_densities = [0.202]
         self.small_world_p = [0.5]
         self.min_layers = min_layers
         self.max_layers = max_layers
@@ -78,7 +78,7 @@ class Trainer:
         # Pulled momentum and WD values from PixMix
         self.momentum = 0.9
         self.weight_decay = 5e-4
-        
+
         self.epochs = epochs
         self.batch_size = batch_size
         self.oversample = oversample
@@ -97,19 +97,20 @@ class Trainer:
     def find_optimal_num_workers(self, dataset):
         best_workers, min_time = None, math.inf
         print(f"Num workers range: {2} to {mp.cpu_count()}")
-        for num_workers in range(2, mp.cpu_count(), 2):  
+        for num_workers in range(2, mp.cpu_count(), 2):
             print(f"Testing with {num_workers}")
             train_loader = DataLoader(dataset,
-                shuffle=True,
-                num_workers=num_workers,
-                batch_size=self.batch_size,
-                pin_memory=True
-            )
+                                      shuffle=True,
+                                      num_workers=num_workers,
+                                      batch_size=self.batch_size,
+                                      pin_memory=True
+                                      )
             start = time()
             for i, data in enumerate(train_loader, 0):
                 pass
             end = time()
-            print("Finish with:{} second, num_workers={}".format(end - start, num_workers))
+            print("Finish with:{} second, num_workers={}".format(
+                end - start, num_workers))
             if end - start < min_time:
                 best_workers, min_time = num_workers, end - start
 
@@ -129,7 +130,7 @@ class Trainer:
         zeros = 0
         # Try only one direction edge information
         for i in range(len(a)):
-            print("i:", i)
+            # print("i:", i)
             for j in range(i, len(a)):
                 if self.one_hot:
                     i_one_hot, j_one_hot = np.zeros(len(a)), np.zeros(len(a))
@@ -143,14 +144,14 @@ class Trainer:
                 if a[i][j] == 1:
                     labels.append(1)
                     if self.oversample:
-                        add_ones.append([i,j])
+                        add_ones.append([i, j])
                         ones += 1
                 else:
                     labels.append(0)
                     if self.oversample:
-                        add_zeros.append([i,j])
+                        add_zeros.append([i, j])
                         zeros += 1
-        
+
         og_labels = np.array(copy.deepcopy(labels))
         og_edges = np.array(copy.deepcopy(edges))
 
@@ -185,7 +186,7 @@ class Trainer:
         for X_val_batch, y_val_batch in val_dataloader:
             b_nodes = X_val_batch.to(device)
             b_labels = y_val_batch.to(device)
-            
+
             y_val_pred = model(b_nodes)
             y_pred_softmax = torch.log_softmax(y_val_pred, dim=1)
             _, y_pred_tags = torch.max(y_pred_softmax, dim=1)
@@ -198,22 +199,23 @@ class Trainer:
 
             val_loss = self.criterion(y_val_pred, b_labels)
             val_epoch_loss += val_loss.item() * y_val_batch.size(0)
-        
+
         avg_loss = val_epoch_loss / len(val_dataloader.sampler)
         print("Test Loss: {:.5f}".format(avg_loss))
 
-        print("Test Model Accuracy: {:.3f}%".format((val_acc / len(val_dataloader)).item()))
+        print("Test Model Accuracy: {:.3f}%".format(
+            (val_acc / len(val_dataloader)).item()))
         # estimator = SizeEstimator(model, input_size=(2,))
         self.model_info[path] = {
             "accuracy": (val_acc / len(val_dataloader)).item(),
         }
         # wandb.log({"loss": avg_loss, "accuracy": (val_acc / len(val_dataloader)).item()})
 
-        with open(f"accuracy/{path}-accuracy.json", "w") as f:
-            out = json.dumps(self.model_info, indent=4)
-            f.write(out)
+        # with open(f"accuracy/{path}-accuracy.json", "w") as f:
+        #     out = json.dumps(self.model_info, indent=4)
+        #     f.write(out)
 
-        torch.save(model.state_dict(), f"models/{path}.pt")
+        # torch.save(model.state_dict(), f"models/{path}.pt")
 
     def train(
         self,
@@ -225,11 +227,11 @@ class Trainer:
     ):
         # optimizer = optim.Adam(model.parameters(), lr=1e-3)
         optimizer = optim.SGD(
-                model.parameters(), 
-                self.lr,
-                momentum=self.momentum,
-                weight_decay=self.weight_decay, 
-                nesterov=True
+            model.parameters(),
+            self.lr,
+            momentum=self.momentum,
+            weight_decay=self.weight_decay,
+            nesterov=True
         )
         loss = []
         print(f"Data path: {path}")
@@ -242,13 +244,12 @@ class Trainer:
             for x_train_batch, y_train_batch in train_dataloader:
                 b_nodes = x_train_batch.to(device)
                 b_labels = y_train_batch.to(device)
-
+                # print("b_nodes", b_nodes)
+                # print("b_labels", b_labels)
                 optimizer.zero_grad()
-
                 y_train_pred = model(b_nodes)
                 # print("y_train_pred", y_train_pred)
                 _, y_pred_tags = torch.max(y_train_pred, dim=1)
-
                 # print("b_labels", b_labels)
                 # print("y_pred_tags", y_pred_tags)
                 # print("y_train_pred", y_train_pred)
@@ -257,7 +258,7 @@ class Trainer:
                 # for pred in y_pred_tags:
                 #     if pred.item() == 1:
                 #         one_pred += 1
-                
+
                 # print("one Pred: ", one_pred)
                 # print("percent pred ones: ", one_pred / len(y_pred_tags))
                 # input()
@@ -273,7 +274,7 @@ class Trainer:
                 #     if y_pred_tags[i] != b_labels[i]:
                 #         print("misclassified on input", x_train_batch[i])
                 #         print("predicted", y_pred_tags[i])
-                        # input()
+                # input()
 
                 acc = correct_pred.sum() / len(correct_pred)
                 acc = torch.round(acc * 100)
@@ -284,27 +285,28 @@ class Trainer:
             # Sanity check, especially if oversampling and/or doing weird things to data
             if epoch_i > 0 and epoch_i % 10 == 0:
                 self.eval(model, val_dataloader, path)
-                
+
             avg_loss = train_epoch_loss / len(train_dataloader.sampler)
             loss.append(avg_loss)
             print(
                 f"Epoch {epoch_i + 1}: | Train Loss: {avg_loss:.5f} "
             )
-            print("Model accuracy: {:.3f}%".format((train_acc / len(train_dataloader)).item()))
-            # wandb.log({"loss": avg_loss, "accuracy": (train_acc / len(train_dataloader)).item()})
-        
-        
+            print("Model accuracy: {:.3f}%".format(
+                (train_acc / len(train_dataloader)).item()))
+            wandb.log({"loss": avg_loss, "accuracy": (
+                train_acc / len(train_dataloader)).item()})
+
         # TODO(leonard): fix this hacky af trick
         plot_path = path.strip(".mtx")
-        print("plot_path" , plot_path)
+        print("plot_path", plot_path)
         self.save_plot(plot_path, loss, epochs)
         self.eval(model, val_dataloader, path)
-    
+
         # wandb.finish()
         # torch.save(model.state_dict(), f"./models/{path}.pt")
 
     def train_and_eval_single_graph_with_model(self, model, data_path):
-        train_dataset, val_dataset = self.get_data(data_path, oversample_p=0.538)
+        train_dataset, val_dataset = self.get_data(data_path)
         train_dataloader = DataLoader(
             train_dataset,
             # sampler=RandomSampler(train_dataset),  # Sampling for training is random
@@ -333,10 +335,10 @@ class Trainer:
             epochs=self.epochs,
             path=f"{model.model_name}-oversample{self.oversample}-{data_path}"
         )
-        
 
     # TODO(leonard): def this out to run single experiments instead of things in loops
     # Def out graph and model layers; specify model first, then data
+
     def train_and_eval_all_graphs_and_models(self):
         """
         Run experiments across all types of graph data and models
@@ -347,7 +349,7 @@ class Trainer:
                 # Keeping this so it aligns with the .3f file names, fix in the future
                 graph_density = format(graph_density, '.3f')
 
-                for p in self.small_world_p: 
+                for p in self.small_world_p:
                     # TODO(ltang): fix this hacky ass shit:
                     # In the future, generate these on the fly instead of saving files then loading
                     if self.data_type == ERDOS_RENYI:
@@ -358,18 +360,19 @@ class Trainer:
                         raise Exception('Data type not handled')
 
                     print(f"Grabbing {data_path}")
-                    
+
                     # model = UnSqueeze(max_throughput_multiplier=1024)
                     # model = WideNet(width=10000)
-                    model = Siren(dim_in=2, dim_hidden=128, dim_out=2, num_layers=12)
-                    # model = BlockModel(num_features=2, num_classes=2, num_layers=6, num_nodes=256)
+                    # model = Siren(dim_in=2, dim_hidden=128, dim_out=2, num_layers=12)
+                    model = BlockModel(
+                        num_features=2, num_classes=2, num_layers=6, num_nodes=256)
                     model.to(device)
 
                     wandb.init(project="training-runs", entity="cs222", config={
                         "learning_rate": self.lr,
                         "epochs": self.epochs,
                         "batch_size": self.batch_size,
-                        "graph_size": graph_size, 
+                        "graph_size": graph_size,
                         "graph_density": graph_density,
                         "graph_file": data_path,
                         "model_name": model.model_name,
@@ -378,13 +381,15 @@ class Trainer:
                     })
                     if model.model_name == "widenet":
                         wandb.run.name = f"{model.model_name}-{model.width}-oversample{self.oversample}-{data_path}"
+                    elif model.model_name == "block":
+                        wandb.run.name = f"{model.model_name}-{6}-{256}-oversample{self.oversample}-{data_path}"
                     else:
                         wandb.run.name = f"{model.model_name}-oversample{self.oversample}-{data_path}"
                     # wandb.run.name = f"40layers-{model.model_name}-oversample{self.oversample}-{data_path}"
                     wandb.run.save()
                     # model = torch.nn.DataParallel(model)
-                    self.train_and_eval_single_graph_with_model(model, data_path)
-
+                    self.train_and_eval_single_graph_with_model(
+                        model, data_path)
 
         print("Saving output loss and size estimates...")
 
