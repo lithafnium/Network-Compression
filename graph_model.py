@@ -58,5 +58,23 @@ class UnSqueeze(nn.Module):
 
     def forward(self, x):
         x = self.net(x)
+        return x
 
+# TODO(ltang) -- automatically design/relate Width with "small-worldness" of the network
+class WideNet(nn.Module):
+    # Width should certainly depend on number of nodes in graph, also "small-worldness"
+    def __init__(self, num_features=2, num_classes=2, width=100):
+        super().__init__()
+        self.model_name = "widenet"
+        self.width = width
+
+        # TODO(ltang) -- try periodic activation function
+        layers = []
+        layers.append(nn.Linear(num_features, width))
+        layers.append(nn.ReLU())
+        layers.append(nn.Linear(width, num_classes))
+        self.net = nn.Sequential(*layers)
+
+    def forward(self, x):
+        x = self.net(x)
         return x

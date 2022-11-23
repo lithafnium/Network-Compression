@@ -11,24 +11,26 @@ from torch.utils.data import (
 
 from collections import defaultdict
 
-from graph_model import BlockModel, UnSqueeze
+from graph_model import BlockModel, UnSqueeze, WideNet
 from size_estimator import SizeEstimator
 import tqdm
+import math
+import multiprocessing as mp
 import numpy as np
-from scipy.io import mmread
 import json
 import matplotlib.pyplot as plt
 import random
 import copy
-
 import wandb
+from time import time
+from scipy.io import mmread
 
 
 dtype = torch.float32
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-torch.set_default_tensor_type(
-    "torch.cuda.FloatTensor" if torch.cuda.is_available() else "torch.FloatTensor"
-)
+# torch.set_default_tensor_type(
+#     "torch.cuda.FloatTensor" if torch.cuda.is_available() else "torch.FloatTensor"
+# )
 
 SMALL_WORLD = "small-world"
 ERDOS_RENYI = "erdos-renyi"
@@ -58,13 +60,13 @@ class Trainer:
         max_layers=6,
         max_nodes=64,
         min_nodes=64,
+        num_workers=32,
     ):
         self.criterion = nn.CrossEntropyLoss()
         # self.graph_sizes = [100, 1000]
-        self.graph_sizes = [100]
-        # self.graph_densities = [0.05, 0.1, 0.25, 0.5, 0.75]
-        # self.graph_densities = [0.040, 0.101, 0.505, 0.747]
-        self.graph_densities = [0.242]
+        self.graph_sizes = [1000]
+        self.graph_densities = [0.050, 0.100, 0.250, 0.501]
+        # self.graph_densities = [0.040, 0.101, 0.242, 0.505, 0.747]
         self.small_world_p = [0.5]
         self.min_layers = min_layers
         self.max_layers = max_layers
@@ -77,12 +79,35 @@ class Trainer:
         self.oversample = oversample
         self.data_type = data_type
 
+        self.num_workers = num_workers
         self.model_info = {}
 
     def save_plot(self, path, loss_values, num_epochs):
         plt.clf()
         plt.plot([i + 1 for i in range(num_epochs)], loss_values)
         plt.savefig(f"plots/{path}.png")
+
+    def find_optimal_num_workers(self, dataset):
+        best_workers, min_time = None, math.inf
+        print(f"Num workers range: {2} to {mp.cpu_count()}")
+        for num_workers in range(2, mp.cpu_count(), 2):  
+            print(f"Testing with {num_workers}")
+            train_loader = DataLoader(dataset,
+                shuffle=True,
+                num_workers=num_workers,
+                batch_size=self.batch_size,
+                pin_memory=True
+            )
+            start = time()
+            for i, data in enumerate(train_loader, 0):
+                pass
+            end = time()
+            print("Finish with:{} second, num_workers={}".format(end - start, num_workers))
+            if end - start < min_time:
+                best_workers, min_time = num_workers, end - start
+
+        print("Done testing for optimal num_workers")
+        return best_workers
 
     def get_data(self, path):
         """ 
@@ -140,11 +165,14 @@ class Trainer:
         val_acc = 0
         val_epoch_loss = 0
         for X_val_batch, y_val_batch in val_dataloader:
-            y_val_pred = model(X_val_batch)
+            b_nodes = X_val_batch.to(device)
+            b_labels = y_val_batch.to(device)
+            
+            y_val_pred = model(b_nodes)
             y_pred_softmax = torch.log_softmax(y_val_pred, dim=1)
             _, y_pred_tags = torch.max(y_pred_softmax, dim=1)
 
-            correct_pred = (y_pred_tags == y_val_batch).float()
+            correct_pred = (y_pred_tags == b_labels).float()
             acc = correct_pred.sum() / len(correct_pred)
             acc = torch.round(acc * 100)
 
@@ -161,6 +189,8 @@ class Trainer:
         self.model_info[path] = {
             "accuracy": (val_acc / len(val_dataloader)).item(),
         }
+        wandb.log({"loss": avg_loss, "accuracy": (val_acc / len(val_dataloader)).item()})
+
         with open(f"accuracy/{path}-accuracy.json", "w") as f:
             out = json.dumps(self.model_info, indent=4)
             f.write(out)
@@ -187,14 +217,12 @@ class Trainer:
 
             train_acc = 0
             for x_train_batch, y_train_batch in train_dataloader:
-                # print("x_train_batch size", x_train_batch.size())
                 b_nodes = x_train_batch.to(device)
                 b_labels = y_train_batch.to(device)
 
                 optimizer.zero_grad()
 
                 y_train_pred = model(b_nodes)
-                # y_pred_softmax = torch.log_softmax(y_train_pred, dim=1)
                 _, y_pred_tags = torch.max(y_train_pred, dim=1)
 
                 # print("b_labels", b_labels)
@@ -206,7 +234,7 @@ class Trainer:
                 train_loss.backward()
                 optimizer.step()
 
-                correct_pred = (y_pred_tags == y_train_batch).float()
+                correct_pred = (y_pred_tags == b_labels).float()
                 acc = correct_pred.sum() / len(correct_pred)
                 acc = torch.round(acc * 100)
 
@@ -221,34 +249,37 @@ class Trainer:
             print("Model accuracy: {:.3f}%".format((train_acc / len(train_dataloader)).item()))
             wandb.log({"loss": avg_loss, "accuracy": (train_acc / len(train_dataloader)).item()})
         
-        wandb.finish()
+        
         # TODO(leonard): fix this hacky af trick
         plot_path = path.strip(".mtx")
         print("plot_path" , plot_path)
         self.save_plot(plot_path, loss, epochs)
         self.eval(model, val_dataloader, path)
+    
+        wandb.finish()
         # torch.save(model.state_dict(), f"./models/{path}.pt")
 
     def train_and_eval_single_graph_with_model(self, model, data_path):
         train_dataset, val_dataset = self.get_data(data_path)
+        # num_workers = self.find_optimal_num_workers(train_dataset)
+
         train_dataloader = DataLoader(
             train_dataset,
-            sampler=RandomSampler(train_dataset),  # Sampling for training is random
+            # sampler=RandomSampler(train_dataset),  # Sampling for training is random
+            shuffle=True,
             batch_size=self.batch_size,
-            # multiprocessing_context='spawn',
-            # pin_memory=True,
-            # num_workers=2,
+            pin_memory=True,
+            num_workers=self.num_workers,
         )
 
         evaluation_dataloader = DataLoader(
             val_dataset,
-            sampler=SequentialSampler(
-                val_dataset
-            ),  # Sampling for validation is sequential as the order doesn't matter.
+            # sampler=SequentialSampler(
+            #     val_dataset
+            # ),  # Sampling for validation is sequential as the order doesn't matter.
             batch_size=self.batch_size,
-            # multiprocessing_context='spawn',
-            # pin_memory=True,
-            # num_workers=2,
+            pin_memory=True,
+            num_workers=self.num_workers,
         )
 
         # TODO(leonard): fix this hackkyy ass code
@@ -258,11 +289,6 @@ class Trainer:
             train_dataloader,
             evaluation_dataloader,
             epochs=self.epochs,
-            # Should also record type of data we ran on, e.g. {Erdos-Renyi} or {Small-World}, 
-            # and whether or not we oversampled or not: e.g. {Oversampled} or {}
-            # Ordering: model specs -- 
-            # Should also save training specs 
-            # All this would be solved if we used WANDB
             path=f"{model.model_name}-oversample{self.oversample}-{data_path}"
         )
         
@@ -292,6 +318,8 @@ class Trainer:
                     print(f"Grabbing {data_path}")
                     
                     model = BlockModel(num_features=2, num_classes=2, num_layers=5, num_nodes=64)
+                    # model = UnSqueeze(max_throughput_multiplier=1024)
+                    # model = WideNet(width=10000)
                     model.to(device)
 
                     wandb.init(project="training-runs", entity="cs222", config={
@@ -305,7 +333,10 @@ class Trainer:
                         "oversampling": self.oversample,
                         "graph_type": self.data_type,
                     })
-                    wandb.run.name = f"{model.model_name}-oversample{self.oversample}-{data_path}"
+                    if model.model_name == "widenet":
+                        wandb.run.name = f"{model.model_name}-{model.width}-oversample{self.oversample}-{data_path}"
+                    else:
+                        wandb.run.name = f"{model.model_name}-oversample{self.oversample}-{data_path}"
                     wandb.run.save()
                     # model = torch.nn.DataParallel(model)
                     self.train_and_eval_single_graph_with_model(model, data_path)
