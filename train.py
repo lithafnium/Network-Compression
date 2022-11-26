@@ -26,6 +26,8 @@ import wandb
 from time import time
 from scipy.io import mmread
 
+from sklearn.metrics import auc, roc_curve
+
 
 dtype = torch.float32
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -67,7 +69,7 @@ class Trainer:
         # self.graph_sizes = [1000]
         # self.graph_densities = [0.050, 0.100, 0.250, 0.501]
         # self.graph_densities = [0.100, 0.250, 0.501]
-        self.graph_densities = [0.202]
+        self.graph_densities = [0.101]
         self.small_world_p = [0.5]
         self.min_layers = min_layers
         self.max_layers = max_layers
@@ -183,6 +185,10 @@ class Trainer:
         model.eval()
         val_acc = 0
         val_epoch_loss = 0
+
+        auc_roc = 0
+        true_labels = []
+        all_labels = []
         for X_val_batch, y_val_batch in val_dataloader:
             b_nodes = X_val_batch.to(device)
             b_labels = y_val_batch.to(device)
@@ -190,6 +196,9 @@ class Trainer:
             y_val_pred = model(b_nodes)
             y_pred_softmax = torch.log_softmax(y_val_pred, dim=1)
             _, y_pred_tags = torch.max(y_pred_softmax, dim=1)
+
+            true_labels.extend(b_labels.detach().cpu().numpy())
+            all_labels.extend(y_pred_softmax.detach().cpu().numpy())
 
             correct_pred = (y_pred_tags == b_labels).float()
             acc = correct_pred.sum() / len(correct_pred)
@@ -203,8 +212,12 @@ class Trainer:
         avg_loss = val_epoch_loss / len(val_dataloader.sampler)
         print("Test Loss: {:.5f}".format(avg_loss))
 
+        fpr, tpr, thresholds = roc_curve(np.array(true_labels), np.array(all_labels)[:, 1])
+        auc_roc = auc(fpr, tpr)
+
         print("Test Model Accuracy: {:.3f}%".format(
             (val_acc / len(val_dataloader)).item()))
+        print("Test Model auc_roc: {:.3f}".format(auc_roc))
         # estimator = SizeEstimator(model, input_size=(2,))
         self.model_info[path] = {
             "accuracy": (val_acc / len(val_dataloader)).item(),
@@ -264,6 +277,8 @@ class Trainer:
                 # input()
 
                 train_loss = self.criterion(y_train_pred, b_labels)
+
+                
                 # print("train_loss", train_loss)
                 train_loss.backward()
                 optimizer.step()
