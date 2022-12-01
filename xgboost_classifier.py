@@ -51,7 +51,7 @@ def decompress(jsonfilename):
 if __name__ == "__main__":
 
     xgb_cl = xgb.XGBClassifier(
-        use_label_encoder=False, max_depth=20, n_estimators=500)
+        use_label_encoder=False, max_depth=20, n_estimators=500, tree_method="gpu_hist")
 
     #     # clf = SVC(gamma=20)
 
@@ -60,13 +60,13 @@ if __name__ == "__main__":
     #     #                            max_depth=7, reg_lambda=0, scale_pos_weight=3, subsample=0.8)
     #     print(xgb_cl.get_params())
 
-    edges, labels = get_data("data/graph-100-0.202-small-world-p-0.5.mtx")
+    edges, labels = get_data("data/graph-10000-0.200-small-world-p-0.5.mtx")
     xgb_cl.fit(edges, labels)
 
     preds = xgb_cl.predict(edges)
 
     print(accuracy_score(labels, preds))
-    xgb_cl.save_model("model.json")
+    # xgb_cl.save_model("model.json")
     #     # xgb_cl = xgb.XGBClassifier(
     # compress("model.json")
     #     objective="binary:logistic", tree_method="gpu_hist", use_label_encoder=False)

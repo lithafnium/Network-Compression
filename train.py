@@ -69,7 +69,7 @@ class Trainer:
         # self.graph_sizes = [1000]
         # self.graph_densities = [0.050, 0.100, 0.250, 0.501]
         # self.graph_densities = [0.100, 0.250, 0.501]
-        self.graph_densities = [0.101]
+        self.graph_densities = [0.404]
         self.small_world_p = [0.5]
         self.min_layers = min_layers
         self.max_layers = max_layers
@@ -133,7 +133,7 @@ class Trainer:
         # Try only one direction edge information
         for i in range(len(a)):
             # print("i:", i)
-            for j in range(i, len(a)):
+            for j in range(len(a)):
                 if self.one_hot:
                     i_one_hot, j_one_hot = np.zeros(len(a)), np.zeros(len(a))
                     i_one_hot[i] = 1
@@ -212,7 +212,8 @@ class Trainer:
         avg_loss = val_epoch_loss / len(val_dataloader.sampler)
         print("Test Loss: {:.5f}".format(avg_loss))
 
-        fpr, tpr, thresholds = roc_curve(np.array(true_labels), np.array(all_labels)[:, 1])
+        fpr, tpr, thresholds = roc_curve(
+            np.array(true_labels), np.array(all_labels)[:, 1])
         auc_roc = auc(fpr, tpr)
 
         print("Test Model Accuracy: {:.3f}%".format(
@@ -278,7 +279,6 @@ class Trainer:
 
                 train_loss = self.criterion(y_train_pred, b_labels)
 
-                
                 # print("train_loss", train_loss)
                 train_loss.backward()
                 optimizer.step()
@@ -316,7 +316,7 @@ class Trainer:
         print("plot_path", plot_path)
         self.save_plot(plot_path, loss, epochs)
         self.eval(model, val_dataloader, path)
-
+        torch.save(model.state_dict(), f"models/{plot_path}.pt")
         # wandb.finish()
         # torch.save(model.state_dict(), f"./models/{path}.pt")
 
