@@ -46,9 +46,11 @@ def mtx_to_graph(path):
         for c in nx.strongly_connected_components(G)
     ]
 
+    print("nx.strongly_connected_components(G)", nx.strongly_connected_components(G))
+    print("scc", scc)
+    print("print(len(scc))", len(scc))
     return scc
     # print("G is strogly connected: ", nx.is_strongly_connected(G))
-    # print(len(scc))
 
     # G = nx.cycle_graph(4, create_using=nx.DiGraph())
     # nx.add_cycle(G, [10, 11, 12])
@@ -62,4 +64,5 @@ def mtx_to_graph(path):
 
 
 if __name__ == "__main__":
-    bfs("data/graph-100-0.040-small-world-p-0.5.mtx")
+    # bfs("data/graph-100-0.040-small-world-p-0.5.mtx")
+    mtx_to_graph("/data/leonardtang/cs222proj/data/graph-1000-0.501-small-world-p-0.5.mtx")

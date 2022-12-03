@@ -10,23 +10,26 @@ from torch.utils.data import (
 )
 
 from collections import defaultdict
-
 from graph_model import BlockModel, UnSqueeze, WideNet, OneHotNet
-from siren.siren import Siren
+from siren import Siren
 from size_estimator import SizeEstimator
 import tqdm
 import math
 import multiprocessing as mp
 import numpy as np
 import json
+from scipy import sparse
 import matplotlib.pyplot as plt
 import random
 import copy
 import wandb
 from time import time
 from scipy.io import mmread
-
 from sklearn.metrics import auc, roc_curve
+import networkx as nx
+import multiprocess as mp
+from itertools import combinations
+from siren import Siren
 
 
 dtype = torch.float32
@@ -63,14 +66,17 @@ class Trainer:
         min_nodes=64,
         num_workers=32,
         one_hot=False,
+        order="none"
     ):
         self.criterion = nn.CrossEntropyLoss()
-        self.graph_sizes = [100]
-        # self.graph_sizes = [1000]
+        # self.graph_sizes = [100]
+        self.graph_sizes = [1000]
         # self.graph_densities = [0.050, 0.100, 0.250, 0.501]
         # self.graph_densities = [0.100, 0.250, 0.501]
-        self.graph_densities = [0.101]
+        self.graph_densities = [0.501]
         self.small_world_p = [0.5]
+        self.order = "degree150"
+        # self.order = "none"
         self.min_layers = min_layers
         self.max_layers = max_layers
         self.max_nodes = max_nodes
@@ -124,60 +130,99 @@ class Trainer:
         Read and load a mtx file as EdgeDataset 
         """
         a = mmread(path)
+        # Sparse to dense
+        if isinstance(a, sparse.coo_matrix):
+            a = a.toarray()
         labels = []
         edges = []
+
+        G = nx.from_numpy_array(a)
+        print("***** Graph Properties *****")
+        print("Size: ", G.number_of_nodes())
+        print("Density: ", nx.density(G))
+        print("# Connected Comps: ", nx.number_connected_components(G))
 
         add_ones, add_zeros = [], []
         ones = 0
         zeros = 0
+
+        # p = mp.Pool()
+
+        # def get_label(i, j, a):
+        #     # if self.one_hot:
+        #     #         i_one_hot, j_one_hot = np.zeros(len(a)), np.zeros(len(a))
+        #     #         i_one_hot[i] = 1
+        #     #         j_one_hot[j] = 1
+        #     #         # Try concatenating lmao
+        #     #         # edges.append(np.concatenate((i_one_hot, j_one_hot)))
+        #     #         edge = np.concatenate((i_one_hot, j_one_hot))
+        #     # else:
+        #     #     # edges.append([i, j])
+        #     #     edge = [i, j]
+        #     if a[i][j] == 1:
+        #         return 1
+        #     else:
+        #         return 0
+
         # Try only one direction edge information
-        for i in range(len(a)):
-            # print("i:", i)
-            for j in range(i, len(a)):
-                if self.one_hot:
-                    i_one_hot, j_one_hot = np.zeros(len(a)), np.zeros(len(a))
-                    i_one_hot[i] = 1
-                    j_one_hot[j] = 1
-                    # Try concatenating lmao
-                    edges.append(np.concatenate((i_one_hot, j_one_hot)))
-                else:
-                    edges.append([i, j])
-                # TODO(Leonard): clean up this oversampling code; i.e. if oversample: then
-                if a[i][j] == 1:
-                    labels.append(1)
-                    if self.oversample:
-                        add_ones.append([i, j])
-                        ones += 1
-                else:
-                    labels.append(0)
-                    if self.oversample:
-                        add_zeros.append([i, j])
-                        zeros += 1
+        # for i in range(len(a)):
+        #     for j in range(i, len(a)):
 
-        og_labels = np.array(copy.deepcopy(labels))
-        og_edges = np.array(copy.deepcopy(edges))
+        # Need to def out oversampling for parallel:
+        # if self.oversample:
+        # add_ones.append([i, j])
+        # ones += 1
+        # if self.oversample:
+        #             add_zeros.append([i, j])
+        #             zeros += 1
 
-        if self.oversample:
-            if ones < zeros:
-                while ones < int(zeros * oversample_p):
-                    edges.append(random.choice(add_ones))
-                    # edges.append(add_ones.pop())
-                    labels.append(1)
-                    ones += 1
-            else:
-                while zeros < int(ones * oversample_p):
-                    edges.append(random.choice(add_zeros))
-                    # edges.append(add_zeros.pop())
-                    labels.append(0)
-                    zeros += 1
-            labels = np.array(labels)
-            edges = np.array(edges)
+        # og_labels = np.array(copy.deepcopy(labels))
+        # og_edges = np.array(copy.deepcopy(edges))
 
-        print("One Labels:", sum(labels))
-        print("Total Labels:", len(labels))
+        # if self.oversample:
+        #     if ones < zeros:
+        #         while ones < int(zeros * oversample_p):
+        #             edges.append(random.choice(add_ones))
+        #             # edges.append(add_ones.pop())
+        #             labels.append(1)
+        #             ones += 1
+        #     else:
+        #         while zeros < int(ones * oversample_p):
+        #             edges.append(random.choice(add_zeros))
+        #             # edges.append(add_zeros.pop())
+        #             labels.append(0)
+        #             zeros += 1
+        #     labels = np.array(labels)
+        #     edges = np.array(edges)
 
+        # print("One Labels:", sum(labels))
+        # print("Total Labels:", len(labels))
+
+        # test_length = int(len(a) / 10)
+        test_length = int(len(a))
+        # TODO: speed this up
+        edges = []
+        norm_edges = []
+        mid = test_length / 2
+        for i, j in list(combinations(range(test_length), 2)):
+            edges.append([i, j])
+            # norm_edges.append([(i - mid) / mid, (j - mid) / mid])
+        coords = np.array(edges).T
+        # norm_edges = np.array(norm_edges)
+        # print("norm_edges?", norm_edges)
+        print("coords?", coords)
+        i, j = coords[0], coords[1]
+        print("i?", i)
+        print("j?", j)
+
+        labels = a[i, j]
+        print("labels?", labels)
+
+        # train_dataset = EdgeDataset(norm_edges, labels)
+        # val_dataset = EdgeDataset(norm_edges, labels)
         train_dataset = EdgeDataset(edges, labels)
-        val_dataset = EdgeDataset(og_edges, og_labels)
+        val_dataset = EdgeDataset(edges, labels)
+        # val_dataset = EdgeDataset(og_edges, og_labels)
         return train_dataset, val_dataset
 
     def eval(self, model, val_dataloader: DataLoader, path: str):
@@ -206,13 +251,14 @@ class Trainer:
 
             val_acc += acc
 
-            val_loss = self.criterion(y_val_pred, b_labels)
+            val_loss = self.criterion(y_val_pred, b_labels.long())
             val_epoch_loss += val_loss.item() * y_val_batch.size(0)
 
         avg_loss = val_epoch_loss / len(val_dataloader.sampler)
         print("Test Loss: {:.5f}".format(avg_loss))
 
-        fpr, tpr, thresholds = roc_curve(np.array(true_labels), np.array(all_labels)[:, 1])
+        fpr, tpr, thresholds = roc_curve(
+            np.array(true_labels), np.array(all_labels)[:, 1])
         auc_roc = auc(fpr, tpr)
 
         print("Test Model Accuracy: {:.3f}%".format(
@@ -254,7 +300,8 @@ class Trainer:
             model.train()
 
             train_acc = 0
-            for x_train_batch, y_train_batch in train_dataloader:
+            for j, data in enumerate(train_dataloader):
+                x_train_batch, y_train_batch = data
                 b_nodes = x_train_batch.to(device)
                 b_labels = y_train_batch.to(device)
                 # print("b_nodes", b_nodes)
@@ -276,10 +323,10 @@ class Trainer:
                 # print("percent pred ones: ", one_pred / len(y_pred_tags))
                 # input()
 
-                train_loss = self.criterion(y_train_pred, b_labels)
-
-                
-                # print("train_loss", train_loss)
+                train_loss = self.criterion(y_train_pred, b_labels.long())
+                # if j % 500 == 0:
+                #     print("y_train_pred", y_train_pred)
+                #     print("train_loss", train_loss)
                 train_loss.backward()
                 optimizer.step()
 
@@ -308,8 +355,8 @@ class Trainer:
             )
             print("Model accuracy: {:.3f}%".format(
                 (train_acc / len(train_dataloader)).item()))
-            wandb.log({"loss": avg_loss, "accuracy": (
-                train_acc / len(train_dataloader)).item()})
+            # wandb.log({"loss": avg_loss, "accuracy": (
+            #     train_acc / len(train_dataloader)).item()})
 
         # TODO(leonard): fix this hacky af trick
         plot_path = path.strip(".mtx")
@@ -359,6 +406,22 @@ class Trainer:
         Run experiments across all types of graph data and models
         """
 
+        # model = BlockModel(num_features=2, num_classes=2,
+        #                    num_layers=18, num_nodes=256)
+        model = Siren(
+            dim_in=2,
+            dim_hidden=28,
+            dim_out=2,
+            num_layers=10,
+            final_activation=torch.nn.Identity(),
+        )
+        model.to(device)
+        # data_path = '/data/leonardtang/cs222proj/data/mtx_graphs/socfb-Harvard1.mtx'
+        data_path = '/data/leonardtang/cs222proj/data/graph-1000-0.501-small-world-Ordernone-p-0.5.mtx'
+        self.train_and_eval_single_graph_with_model(model, data_path)
+        # Temp return
+        return
+
         for graph_size in self.graph_sizes:
             for graph_density in self.graph_densities:
                 # Keeping this so it aligns with the .3f file names, fix in the future
@@ -368,9 +431,9 @@ class Trainer:
                     # TODO(ltang): fix this hacky ass shit:
                     # In the future, generate these on the fly instead of saving files then loading
                     if self.data_type == ERDOS_RENYI:
-                        data_path = f"data/graph-{graph_size}-{graph_density}-Erdos-Renyi-p-{p}.mtx"
+                        data_path = f"data/graph-{graph_size}-{graph_density}-Erdos-Renyi-Order{self.order}-p-{p}.mtx"
                     elif self.data_type == SMALL_WORLD:
-                        data_path = f"data/graph-{graph_size}-{graph_density}-small-world-p-{p}.mtx"
+                        data_path = f"data/graph-{graph_size}-{graph_density}-small-world-Order{self.order}-p-{p}.mtx"
                     else:
                         raise Exception('Data type not handled')
 
@@ -383,25 +446,25 @@ class Trainer:
                         num_features=2, num_classes=2, num_layers=6, num_nodes=256)
                     model.to(device)
 
-                    wandb.init(project="training-runs", entity="cs222", config={
-                        "learning_rate": self.lr,
-                        "epochs": self.epochs,
-                        "batch_size": self.batch_size,
-                        "graph_size": graph_size,
-                        "graph_density": graph_density,
-                        "graph_file": data_path,
-                        "model_name": model.model_name,
-                        "oversampling": self.oversample,
-                        "graph_type": self.data_type,
-                    })
-                    if model.model_name == "widenet":
-                        wandb.run.name = f"{model.model_name}-{model.width}-oversample{self.oversample}-{data_path}"
-                    elif model.model_name == "block":
-                        wandb.run.name = f"{model.model_name}-{6}-{256}-oversample{self.oversample}-{data_path}"
-                    else:
-                        wandb.run.name = f"{model.model_name}-oversample{self.oversample}-{data_path}"
-                    # wandb.run.name = f"40layers-{model.model_name}-oversample{self.oversample}-{data_path}"
-                    wandb.run.save()
+                    # wandb.init(project="training-runs", entity="cs222", config={
+                    #     "learning_rate": self.lr,
+                    #     "epochs": self.epochs,
+                    #     "batch_size": self.batch_size,
+                    #     "graph_size": graph_size,
+                    #     "graph_density": graph_density,
+                    #     "graph_file": data_path,
+                    #     "model_name": model.model_name,
+                    #     "oversampling": self.oversample,
+                    #     "graph_type": self.data_type,
+                    # })
+                    # if model.model_name == "widenet":
+                    #     wandb.run.name = f"{model.model_name}-{model.width}-oversample{self.oversample}-{data_path}"
+                    # elif model.model_name == "block":
+                    #     wandb.run.name = f"{model.model_name}-{6}-{256}-oversample{self.oversample}-{data_path}"
+                    # else:
+                    #     wandb.run.name = f"{model.model_name}-oversample{self.oversample}-{data_path}"
+                    # # wandb.run.name = f"40layers-{model.model_name}-oversample{self.oversample}-{data_path}"
+                    # wandb.run.save()
                     # model = torch.nn.DataParallel(model)
                     self.train_and_eval_single_graph_with_model(
                         model, data_path)

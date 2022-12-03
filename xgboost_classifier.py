@@ -13,7 +13,8 @@ import xgboost as xgb
 import gzip
 import json
 param_grid = {
-    "max_depth": [10, 15, 31],
+    "max_depth": [10, 15, 30],
+    # 50, 100
 }
 
 
@@ -50,29 +51,27 @@ def decompress(jsonfilename):
 
 if __name__ == "__main__":
 
-    xgb_cl = xgb.XGBClassifier(
-        use_label_encoder=False, max_depth=20, n_estimators=500)
+    xgb_cl = xgb.XGBClassifier(use_label_encoder=False, max_depth=20, n_estimators=500, tree_method='gpu_hist')
+    # clf = SVC(gamma=20)
 
-    #     # clf = SVC(gamma=20)
+    # {'colsample_bytree': 0.5, 'gamma': 0, 'learning_rate': 0.1, 'max_depth': 7, 'reg_lambda': 0, 'scale_pos_weight': 3, 'subsample': 0.8}
+    # scale_pos_weight handles imbalances: sum(negative instances) / sum(positive instances)
+    # xgb_cl = xgb.XGBClassifier(colsample_bytree=0.5, gamma=0, n_estimators=500,
+    #                            learning_rate=0.3, max_depth=20, reg_lambda=0, scale_pos_weight=1, subsample=0.8)
+    # tree_method='gpu_hist',
+    print(xgb_cl.get_params())
 
-    # #{'colsample_bytree': 0.5, 'gamma': 0, 'learning_rate': 0.1, 'max_depth': 7, 'reg_lambda': 0, 'scale_pos_weight': 3, 'subsample': 0.8}
-    #     # xgb_cl = xgb.XGBClassifier(colsample_bytree=0.5, gamma=0, learning_rate=0.1,
-    #     #                            max_depth=7, reg_lambda=0, scale_pos_weight=3, subsample=0.8)
-    #     print(xgb_cl.get_params())
-
-    edges, labels = get_data("data/graph-100-0.202-small-world-p-0.5.mtx")
+    edges, labels = get_data("data/graph-1000-0.501-small-world-p-0.5.mtx")
     xgb_cl.fit(edges, labels)
-
     preds = xgb_cl.predict(edges)
-
     print(accuracy_score(labels, preds))
-    xgb_cl.save_model("model.json")
+
+    # xgb_cl.save_model("model.json")
     #     # xgb_cl = xgb.XGBClassifier(
     # compress("model.json")
     #     objective="binary:logistic", tree_method="gpu_hist", use_label_encoder=False)
 
-
-# # Init Grid Search
+    # Init Grid Search
     # grid_cv = GridSearchCV(xgb_cl, param_grid, n_jobs=1,
     #                        cv=3, scoring="roc_auc")
 
@@ -88,6 +87,6 @@ if __name__ == "__main__":
     # predicted = clf.predict(edges)
     # print(accuracy_score(labels, predicted))
 
-    # # clf = clf.fit(edges, labels)
+    # clf = clf.fit(edges, labels)
     # scores = cross_val_score(clf, edges, labels, cv=5)
     # print(scores.mean())

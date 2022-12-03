@@ -1,5 +1,6 @@
 import argparse
 import networkx as nx
+import numpy as np
 import scipy.io as io
 from math import ceil
 from train import SMALL_WORLD, ERDOS_RENYI
@@ -89,6 +90,31 @@ def reorder_dag(adj, G):
 
     return adj, copy
 
+def order_by_degree(G, quantize_gap=50):
+    
+    degrees = np.array([val for (_, val) in G.degree()])
+    nodes = np.array([node for (node, _) in G.degree()])
+    idx = degrees.argsort()
+    sorted_nodes = nodes[idx]
+    sorted_degs = degrees[idx]
+    
+    # Map based on different degree chunks: ex) degs can be 41, 41, 41, 42, 42, 42, 42, 42, 43, 43, 43, 43, 43, 43, 44, 44
+    node_map = {}
+    prev_deg = sorted_degs[0]
+    i = 0
+    for j, node in enumerate(sorted_nodes):
+        if sorted_degs[j] != prev_deg:
+            prev_deg = sorted_degs[j]
+            i += quantize_gap
+        # Basically label as i or as (i + quantize_gap)
+        node_map[node] = i
+        i += 1
+
+    copy = nx.relabel_nodes(G, node_map, copy=True)
+    adj = nx.to_numpy_array(copy)
+
+    return adj, copy
+
 def main():
     parser = argparse.ArgumentParser(
         "Generates graphs given number of nodes and density"
@@ -96,7 +122,7 @@ def main():
     parser.add_argument("-n", "--nodes", type=int, default=1000, required=True)
     parser.add_argument("-d", "--density", type=float, default=0.05, required=True)
     parser.add_argument("-g", "--graph-type", type=str, default=ERDOS_RENYI, choices=[ERDOS_RENYI, SMALL_WORLD], required=True)
-    parser.add_argument("-r", "--reorder", type=str, default="none", choices=["bfs", "dag", "none"])
+    parser.add_argument("-r", "--reorder", type=str, default="none", choices=["bfs", "dag", "degree", "none"])
     args = parser.parse_args()
 
     n = args.nodes
@@ -104,20 +130,29 @@ def main():
     r = args.reorder
 
     if args.graph_type == SMALL_WORLD:
-        adj, G = generate_watts_strogatz_graph(n, d, switch_prob=0.5)
+        adj, G = generate_watts_strogatz_graph(n, d, switch_prob=0.2)
         if r == "bfs":
             adj, G = reorder_bfs(adj, G)
         if r == "dag":
             adj, G = reorder_dag(adj, G)
         # Save the actual density as the target density does not necessarily match
-        path = f"data/graph-{n}-{nx.density(G):.3f}-small-world-p-0.5.mtx"
+        path = f"data/graph-{n}-{nx.density(G):.3f}-small-world-Order{r}-p-0.5.mtx"
+        if r == "degree":
+            # TODO: gap should ideally scale with dataset size, just fixing random constant for now
+            gap = 150
+            adj, G = order_by_degree(G, gap)
+            path = f"data/graph-{n}-{nx.density(G):.3f}-small-world-Order{r}{gap}-p-0.5.mtx"
 
     elif args.graph_type == ERDOS_RENYI:
         adj, G = generate_erdos_renyi(n, d)
         if r == "bfs":
             adj, G = reorder_bfs(adj, G)
-        
-        path = f"data/graph-{n}-{nx.density(G):.3f}-Erdos-Renyi.mtx"
+        path = f"data/graph-{n}-{nx.density(G):.3f}-small-world-Order{r}-p-0.5.mtx"
+        if r == "degree":
+            gap = 50
+            adj, G = order_by_degree(G, gap)
+            # Save the actual density as the target density does not necessarily match
+            path = f"data/graph-{n}-{nx.density(G):.3f}-Erdos-Renyi-Order{r}{gap}.mtx"
     
     print("Saving to", path)
     io.mmwrite(path, adj)
