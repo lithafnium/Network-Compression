@@ -51,8 +51,13 @@ def decompress(jsonfilename):
 
 if __name__ == "__main__":
 
+<<<<<<< HEAD
     xgb_cl = xgb.XGBClassifier(use_label_encoder=False, max_depth=20, n_estimators=500, tree_method='gpu_hist')
     # clf = SVC(gamma=20)
+=======
+    xgb_cl = xgb.XGBClassifier(
+        use_label_encoder=False, max_depth=20, n_estimators=500, tree_method="gpu_hist")
+>>>>>>> 5162ce4d3ae4a5da5ee2e4c14b37c8ae3eded1cc
 
     # {'colsample_bytree': 0.5, 'gamma': 0, 'learning_rate': 0.1, 'max_depth': 7, 'reg_lambda': 0, 'scale_pos_weight': 3, 'subsample': 0.8}
     # scale_pos_weight handles imbalances: sum(negative instances) / sum(positive instances)
@@ -61,11 +66,23 @@ if __name__ == "__main__":
     # tree_method='gpu_hist',
     print(xgb_cl.get_params())
 
+<<<<<<< HEAD
     edges, labels = get_data("data/graph-1000-0.501-small-world-p-0.5.mtx")
+=======
+    # #{'colsample_bytree': 0.5, 'gamma': 0, 'learning_rate': 0.1, 'max_depth': 7, 'reg_lambda': 0, 'scale_pos_weight': 3, 'subsample': 0.8}
+    #     # xgb_cl = xgb.XGBClassifier(colsample_bytree=0.5, gamma=0, learning_rate=0.1,
+    #     #                            max_depth=7, reg_lambda=0, scale_pos_weight=3, subsample=0.8)
+    #     print(xgb_cl.get_params())
+
+    edges, labels = get_data("data/graph-10000-0.200-small-world-p-0.5.mtx")
+>>>>>>> 5162ce4d3ae4a5da5ee2e4c14b37c8ae3eded1cc
     xgb_cl.fit(edges, labels)
     preds = xgb_cl.predict(edges)
     print(accuracy_score(labels, preds))
+<<<<<<< HEAD
 
+=======
+>>>>>>> 5162ce4d3ae4a5da5ee2e4c14b37c8ae3eded1cc
     # xgb_cl.save_model("model.json")
     #     # xgb_cl = xgb.XGBClassifier(
     # compress("model.json")

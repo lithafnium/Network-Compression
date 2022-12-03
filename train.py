@@ -73,7 +73,7 @@ class Trainer:
         self.graph_sizes = [1000]
         # self.graph_densities = [0.050, 0.100, 0.250, 0.501]
         # self.graph_densities = [0.100, 0.250, 0.501]
-        self.graph_densities = [0.501]
+        self.graph_densities = [0.404]
         self.small_world_p = [0.5]
         self.order = "degree150"
         # self.order = "none"
@@ -363,7 +363,7 @@ class Trainer:
         print("plot_path", plot_path)
         self.save_plot(plot_path, loss, epochs)
         self.eval(model, val_dataloader, path)
-
+        torch.save(model.state_dict(), f"models/{plot_path}.pt")
         # wandb.finish()
         # torch.save(model.state_dict(), f"./models/{path}.pt")
 

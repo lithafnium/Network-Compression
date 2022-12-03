@@ -6,11 +6,12 @@ from math import sqrt
 
 class Sine(nn.Module):
     """Sine activation with scaling.
+
     Args:
         w0 (float): Omega_0 parameter from SIREN paper.
     """
 
-    def __init__(self, w0=1.0):
+    def __init__(self, w0=1.):
         super().__init__()
         self.w0 = w0
 
@@ -20,6 +21,7 @@ class Sine(nn.Module):
 
 class SirenLayer(nn.Module):
     """Implements a single SIREN layer.
+
     Args:
         dim_in (int): Dimension of input.
         dim_out (int): Dimension of output.
@@ -31,16 +33,8 @@ class SirenLayer(nn.Module):
             Sine activation.
     """
 
-    def __init__(
-        self,
-        dim_in,
-        dim_out,
-        w0=30.0,
-        c=6.0,
-        is_first=False,
-        use_bias=True,
-        activation=None,
-    ):
+    def __init__(self, dim_in, dim_out, w0=30., c=6., is_first=False,
+                 use_bias=True, activation=None):
         super().__init__()
         self.dim_in = dim_in
         self.is_first = is_first
@@ -63,6 +57,7 @@ class SirenLayer(nn.Module):
 
 class Siren(nn.Module):
     """SIREN model.
+
     Args:
         dim_in (int): Dimension of input.
         dim_hidden (int): Dimension of hidden layers.
@@ -74,17 +69,8 @@ class Siren(nn.Module):
         final_activation (torch.nn.Module): Activation function.
     """
 
-    def __init__(
-        self,
-        dim_in,
-        dim_hidden,
-        dim_out,
-        num_layers,
-        w0=30.0,
-        w0_initial=30.0,
-        use_bias=True,
-        final_activation=None,
-    ):
+    def __init__(self, dim_in, dim_hidden, dim_out, num_layers, w0=30.,
+                 w0_initial=30., use_bias=True, final_activation=None):
         super().__init__()
         layers = []
         for ind in range(num_layers):
@@ -92,30 +78,19 @@ class Siren(nn.Module):
             layer_w0 = w0_initial if is_first else w0
             layer_dim_in = dim_in if is_first else dim_hidden
 
-            layers.append(
-                SirenLayer(
-                    dim_in=layer_dim_in,
-                    dim_out=dim_hidden,
-                    w0=layer_w0,
-                    use_bias=use_bias,
-                    is_first=is_first,
-                )
-            )
+            layers.append(SirenLayer(
+                dim_in=layer_dim_in,
+                dim_out=dim_hidden,
+                w0=layer_w0,
+                use_bias=use_bias,
+                is_first=is_first
+            ))
 
         self.net = nn.Sequential(*layers)
 
-        final_activation = (
-            nn.Identity() if final_activation is None else final_activation
-        )
-        self.last_layer = SirenLayer(
-            dim_in=dim_hidden,
-            dim_out=dim_out,
-            w0=w0,
-            use_bias=use_bias,
-            activation=final_activation,
-        )
-
-        self.model_name = "siren"
+        final_activation = nn.Identity() if final_activation is None else final_activation
+        self.last_layer = SirenLayer(dim_in=dim_hidden, dim_out=dim_out, w0=w0,
+                                     use_bias=use_bias, activation=final_activation)
 
     def forward(self, x):
         x = self.net(x)
