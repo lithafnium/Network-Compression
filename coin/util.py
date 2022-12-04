@@ -43,6 +43,7 @@ def to_coordinates_and_features(img):
     coordinates *= 2
     # Convert image to a tensor of features of shape (num_points, channels)
     features = img.reshape(img.shape[0], -1).T
+    print("features:", features)
     return coordinates, features
 
 

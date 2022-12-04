@@ -3,6 +3,7 @@ import torch
 from torch import nn
 from math import sqrt
 
+dtype = torch.float32
 
 class Sine(nn.Module):
     """Sine activation with scaling.
@@ -91,7 +92,7 @@ class Siren(nn.Module):
         final_activation = nn.Identity() if final_activation is None else final_activation
         self.last_layer = SirenLayer(dim_in=dim_hidden, dim_out=dim_out, w0=w0,
                                      use_bias=use_bias, activation=final_activation)
-
+        self.model_name = "siren"
     def forward(self, x):
         x = self.net(x)
         return self.last_layer(x)

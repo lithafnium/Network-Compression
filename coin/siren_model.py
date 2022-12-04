@@ -68,7 +68,7 @@ for i in range(1):
 
     # Load image
     img = imageio.imread(
-        "../graph_images/ocfb-Harvard1.-original.png")
+        "../graph_images/graph-1000-0.501-small-world-Ordernone-p-0.5.mtx-original.png")
     img = transforms.ToTensor()(img).float().to(device, dtype)
 
     # Setup model
@@ -85,6 +85,7 @@ for i in range(1):
     # Set up training
     trainer = Trainer(func_rep, lr=args.learning_rate)
     coordinates, features = util.to_coordinates_and_features(img)
+    print(coordinates, features)
     coordinates, features = coordinates.to(
         device, dtype), features.to(device, dtype)
 

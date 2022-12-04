@@ -11,7 +11,7 @@ from torch.utils.data import (
 
 from collections import defaultdict
 from graph_model import BlockModel, UnSqueeze, WideNet, OneHotNet
-from siren import Siren
+from coin.siren import Siren
 from size_estimator import SizeEstimator
 import tqdm
 import math
@@ -27,9 +27,8 @@ from time import time
 from scipy.io import mmread
 from sklearn.metrics import auc, roc_curve
 import networkx as nx
-import multiprocess as mp
+# import multiprocess as mp
 from itertools import combinations
-from siren import Siren
 
 
 dtype = torch.float32
@@ -48,7 +47,7 @@ class EdgeDataset(Dataset):
         return len(self.edges)
 
     def __getitem__(self, i):
-        return torch.Tensor(self.edges[i]), self.labels[i]
+        return self.edges[i], self.labels[i]
 
 
 class Trainer:
@@ -68,7 +67,8 @@ class Trainer:
         one_hot=False,
         order="none"
     ):
-        self.criterion = nn.CrossEntropyLoss()
+        # self.criterion = nn.CrossEntropyLoss()
+        self.criterion = nn.MSELoss()
         # self.graph_sizes = [100]
         self.graph_sizes = [1000]
         # self.graph_densities = [0.050, 0.100, 0.250, 0.501]
@@ -141,87 +141,22 @@ class Trainer:
         print("Size: ", G.number_of_nodes())
         print("Density: ", nx.density(G))
         print("# Connected Comps: ", nx.number_connected_components(G))
+        a = torch.tensor(a).float()
 
-        add_ones, add_zeros = [], []
-        ones = 0
-        zeros = 0
+        coords = torch.ones(a.shape).nonzero(as_tuple=False).float() 
+        coords = coords / (a.shape[0] - 1) - 0.5
+        # Convert to range [-1, 1]
+        coords *= 2
 
-        # p = mp.Pool()
-
-        # def get_label(i, j, a):
-        #     # if self.one_hot:
-        #     #         i_one_hot, j_one_hot = np.zeros(len(a)), np.zeros(len(a))
-        #     #         i_one_hot[i] = 1
-        #     #         j_one_hot[j] = 1
-        #     #         # Try concatenating lmao
-        #     #         # edges.append(np.concatenate((i_one_hot, j_one_hot)))
-        #     #         edge = np.concatenate((i_one_hot, j_one_hot))
-        #     # else:
-        #     #     # edges.append([i, j])
-        #     #     edge = [i, j]
-        #     if a[i][j] == 1:
-        #         return 1
-        #     else:
-        #         return 0
-
-        # Try only one direction edge information
-        # for i in range(len(a)):
-        #     for j in range(i, len(a)):
-
-        # Need to def out oversampling for parallel:
-        # if self.oversample:
-        # add_ones.append([i, j])
-        # ones += 1
-        # if self.oversample:
-        #             add_zeros.append([i, j])
-        #             zeros += 1
-
-        # og_labels = np.array(copy.deepcopy(labels))
-        # og_edges = np.array(copy.deepcopy(edges))
-
-        # if self.oversample:
-        #     if ones < zeros:
-        #         while ones < int(zeros * oversample_p):
-        #             edges.append(random.choice(add_ones))
-        #             # edges.append(add_ones.pop())
-        #             labels.append(1)
-        #             ones += 1
-        #     else:
-        #         while zeros < int(ones * oversample_p):
-        #             edges.append(random.choice(add_zeros))
-        #             # edges.append(add_zeros.pop())
-        #             labels.append(0)
-        #             zeros += 1
-        #     labels = np.array(labels)
-        #     edges = np.array(edges)
-
-        # print("One Labels:", sum(labels))
-        # print("Total Labels:", len(labels))
-
-        # test_length = int(len(a) / 10)
-        test_length = int(len(a))
-        # TODO: speed this up
-        edges = []
-        norm_edges = []
-        mid = test_length / 2
-        for i, j in list(combinations(range(test_length), 2)):
-            edges.append([i, j])
-            # norm_edges.append([(i - mid) / mid, (j - mid) / mid])
-        coords = np.array(edges).T
-        # norm_edges = np.array(norm_edges)
-        # print("norm_edges?", norm_edges)
         print("coords?", coords)
-        i, j = coords[0], coords[1]
-        print("i?", i)
-        print("j?", j)
+        labels = a.reshape(1, -1).T
+        # labels *= 255
+        print("labels", labels)
+        print(coords.shape, labels.shape)
+        print(coords[0], labels[0])
 
-        labels = a[i, j]
-        print("labels?", labels)
-
-        # train_dataset = EdgeDataset(norm_edges, labels)
-        # val_dataset = EdgeDataset(norm_edges, labels)
-        train_dataset = EdgeDataset(edges, labels)
-        val_dataset = EdgeDataset(edges, labels)
+        train_dataset = EdgeDataset(coords, labels)
+        val_dataset = EdgeDataset(coords, labels)
         # val_dataset = EdgeDataset(og_edges, og_labels)
         return train_dataset, val_dataset
 
@@ -284,14 +219,14 @@ class Trainer:
         epochs,
         path,
     ):
-        # optimizer = optim.Adam(model.parameters(), lr=1e-3)
-        optimizer = optim.SGD(
-            model.parameters(),
-            self.lr,
-            momentum=self.momentum,
-            weight_decay=self.weight_decay,
-            nesterov=True
-        )
+        optimizer = optim.Adam(model.parameters(), lr=1e-3)
+        # optimizer = optim.SGD(
+        #     model.parameters(),
+        #     self.lr,
+        #     momentum=self.momentum,
+        #     weight_decay=self.weight_decay,
+        #     nesterov=True
+        # )
         loss = []
         print(f"Data path: {path}")
         # for epoch_i in tqdm.trange(epochs):
@@ -304,12 +239,20 @@ class Trainer:
                 x_train_batch, y_train_batch = data
                 b_nodes = x_train_batch.to(device)
                 b_labels = y_train_batch.to(device)
+                # print(b_nodes.shape, b_labels.shape)
                 # print("b_nodes", b_nodes)
                 # print("b_labels", b_labels)
                 optimizer.zero_grad()
                 y_train_pred = model(b_nodes)
+                # print(y_train_pred.size(), b_labels.size())
+                # print(y_train_pred.dtype, b_labels.dtype)
+                train_loss = self.criterion(y_train_pred, b_labels)
+                train_loss.backward() 
+                optimizer.step()
+
+                train_epoch_loss += train_loss.item() * x_train_batch.size(0)
                 # print("y_train_pred", y_train_pred)
-                _, y_pred_tags = torch.max(y_train_pred, dim=1)
+                # _, y_pred_tags = torch.max(y_train_pred, dim=1)
                 # print("b_labels", b_labels)
                 # print("y_pred_tags", y_pred_tags)
                 # print("y_train_pred", y_train_pred)
@@ -321,16 +264,15 @@ class Trainer:
 
                 # print("one Pred: ", one_pred)
                 # print("percent pred ones: ", one_pred / len(y_pred_tags))
-                # input()
 
-                train_loss = self.criterion(y_train_pred, b_labels.long())
+                # train_loss = self.criterion(y_train_pred, b_labels.long())
                 # if j % 500 == 0:
                 #     print("y_train_pred", y_train_pred)
                 #     print("train_loss", train_loss)
-                train_loss.backward()
-                optimizer.step()
+                # train_loss.backward()
+                # optimizer.step()
 
-                correct_pred = (y_pred_tags == b_labels).float()
+                # correct_pred = (y_pred_tags == b_labels).float()
 
                 # for i in range(len(y_pred_tags)):
                 #     if y_pred_tags[i] != b_labels[i]:
@@ -338,23 +280,23 @@ class Trainer:
                 #         print("predicted", y_pred_tags[i])
                 # input()
 
-                acc = correct_pred.sum() / len(correct_pred)
-                acc = torch.round(acc * 100)
+                # acc = correct_pred.sum() / len(correct_pred)
+                # acc = torch.round(acc * 100)
 
-                train_acc += acc
-                train_epoch_loss += train_loss.item() * x_train_batch.size(0)
+                # train_acc += acc
+                # train_epoch_loss += train_loss.item() * x_train_batch.size(0)
 
             # Sanity check, especially if oversampling and/or doing weird things to data
-            if epoch_i > 0 and epoch_i % 10 == 0:
-                self.eval(model, val_dataloader, path)
+            # if epoch_i > 0 and epoch_i % 10 == 0:
+            #     self.eval(model, val_dataloader, path)
 
             avg_loss = train_epoch_loss / len(train_dataloader.sampler)
             loss.append(avg_loss)
             print(
                 f"Epoch {epoch_i + 1}: | Train Loss: {avg_loss:.5f} "
             )
-            print("Model accuracy: {:.3f}%".format(
-                (train_acc / len(train_dataloader)).item()))
+            # print("Model accuracy: {:.3f}%".format(
+            #     (train_acc / len(train_dataloader)).item()))
             # wandb.log({"loss": avg_loss, "accuracy": (
             #     train_acc / len(train_dataloader)).item()})
 
@@ -411,13 +353,15 @@ class Trainer:
         model = Siren(
             dim_in=2,
             dim_hidden=28,
-            dim_out=2,
+            dim_out=1,
             num_layers=10,
             final_activation=torch.nn.Identity(),
+            w0=30.0,
+            w0_initial=30.0
         )
         model.to(device)
         # data_path = '/data/leonardtang/cs222proj/data/mtx_graphs/socfb-Harvard1.mtx'
-        data_path = '/data/leonardtang/cs222proj/data/graph-1000-0.501-small-world-Ordernone-p-0.5.mtx'
+        data_path = 'data/graph-1000-0.501-small-world-Ordernone-p-0.5.mtx'
         self.train_and_eval_single_graph_with_model(model, data_path)
         # Temp return
         return
