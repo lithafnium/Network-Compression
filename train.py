@@ -32,7 +32,7 @@ from itertools import combinations
 
 
 dtype = torch.float32
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:7" if torch.cuda.is_available() else "cpu")
 
 SMALL_WORLD = "small-world"
 ERDOS_RENYI = "erdos-renyi"
@@ -53,7 +53,7 @@ class EdgeDataset(Dataset):
 class Trainer:
     def __init__(
         self,
-        lr=1e-3,
+        lr=2e-4,
         batch_size=16,
         epochs=100,
         oversample=False,
@@ -143,19 +143,22 @@ class Trainer:
         print("# Connected Comps: ", nx.number_connected_components(G))
         a = torch.tensor(a).float()
 
-        coords = torch.ones(a.shape).nonzero(as_tuple=False).float() 
+        # TRANSFORMS AS ACCORDING TO COIN PAPER
+        coords = torch.ones(a.shape).nonzero(as_tuple=False).float()
         coords = coords / (a.shape[0] - 1) - 0.5
         # Convert to range [-1, 1]
         coords *= 2
 
-        print("coords?", coords)
+        print("\ncoords?", coords)
         labels = a.reshape(1, -1).T
         # labels *= 255
-        print("labels", labels)
+        print("labels?", labels)
+        print("coords.shape, labels.shape")
         print(coords.shape, labels.shape)
         print(coords[0], labels[0])
 
         train_dataset = EdgeDataset(coords, labels)
+        self.find_optimal_num_workers(train_dataset)
         val_dataset = EdgeDataset(coords, labels)
         # val_dataset = EdgeDataset(og_edges, og_labels)
         return train_dataset, val_dataset
@@ -219,82 +222,31 @@ class Trainer:
         epochs,
         path,
     ):
-        optimizer = optim.Adam(model.parameters(), lr=1e-3)
-        # optimizer = optim.SGD(
-        #     model.parameters(),
-        #     self.lr,
-        #     momentum=self.momentum,
-        #     weight_decay=self.weight_decay,
-        #     nesterov=True
-        # )
+        optimizer = optim.Adam(model.parameters(), lr=self.lr)
         loss = []
         print(f"Data path: {path}")
         # for epoch_i in tqdm.trange(epochs):
         for epoch_i in range(epochs):
             train_epoch_loss = 0
-            model.train()
 
-            train_acc = 0
             for j, data in enumerate(train_dataloader):
                 x_train_batch, y_train_batch = data
                 b_nodes = x_train_batch.to(device)
                 b_labels = y_train_batch.to(device)
-                # print(b_nodes.shape, b_labels.shape)
-                # print("b_nodes", b_nodes)
-                # print("b_labels", b_labels)
+
                 optimizer.zero_grad()
                 y_train_pred = model(b_nodes)
-                # print(y_train_pred.size(), b_labels.size())
-                # print(y_train_pred.dtype, b_labels.dtype)
                 train_loss = self.criterion(y_train_pred, b_labels)
-                train_loss.backward() 
+                train_loss.backward()
                 optimizer.step()
 
                 train_epoch_loss += train_loss.item() * x_train_batch.size(0)
-                # print("y_train_pred", y_train_pred)
-                # _, y_pred_tags = torch.max(y_train_pred, dim=1)
-                # print("b_labels", b_labels)
-                # print("y_pred_tags", y_pred_tags)
-                # print("y_train_pred", y_train_pred)
-
-                # one_pred = 0
-                # for pred in y_pred_tags:
-                #     if pred.item() == 1:
-                #         one_pred += 1
-
-                # print("one Pred: ", one_pred)
-                # print("percent pred ones: ", one_pred / len(y_pred_tags))
-
-                # train_loss = self.criterion(y_train_pred, b_labels.long())
-                # if j % 500 == 0:
-                #     print("y_train_pred", y_train_pred)
-                #     print("train_loss", train_loss)
-                # train_loss.backward()
-                # optimizer.step()
-
-                # correct_pred = (y_pred_tags == b_labels).float()
-
-                # for i in range(len(y_pred_tags)):
-                #     if y_pred_tags[i] != b_labels[i]:
-                #         print("misclassified on input", x_train_batch[i])
-                #         print("predicted", y_pred_tags[i])
-                # input()
-
-                # acc = correct_pred.sum() / len(correct_pred)
-                # acc = torch.round(acc * 100)
-
-                # train_acc += acc
-                # train_epoch_loss += train_loss.item() * x_train_batch.size(0)
-
-            # Sanity check, especially if oversampling and/or doing weird things to data
-            # if epoch_i > 0 and epoch_i % 10 == 0:
-            #     self.eval(model, val_dataloader, path)
 
             avg_loss = train_epoch_loss / len(train_dataloader.sampler)
-            loss.append(avg_loss)
-            print(
-                f"Epoch {epoch_i + 1}: | Train Loss: {avg_loss:.5f} "
-            )
+            if epoch_i % 10 == 0:
+                print(
+                    f"Epoch {epoch_i + 1}: | Train Loss: {avg_loss:.5f} "
+                )
             # print("Model accuracy: {:.3f}%".format(
             #     (train_acc / len(train_dataloader)).item()))
             # wandb.log({"loss": avg_loss, "accuracy": (
@@ -340,9 +292,6 @@ class Trainer:
             path=f"{model.model_name}-oversample{self.oversample}-{data_path}"
         )
 
-    # TODO(leonard): def this out to run single experiments instead of things in loops
-    # Def out graph and model layers; specify model first, then data
-
     def train_and_eval_all_graphs_and_models(self):
         """
         Run experiments across all types of graph data and models
@@ -360,8 +309,8 @@ class Trainer:
             w0_initial=30.0
         )
         model.to(device)
-        # data_path = '/data/leonardtang/cs222proj/data/mtx_graphs/socfb-Harvard1.mtx'
-        data_path = 'data/graph-1000-0.501-small-world-Ordernone-p-0.5.mtx'
+        data_path = '/data/leonardtang/cs222proj/data/mtx_graphs/socfb-Harvard1.mtx'
+        # data_path = 'data/graph-100-0.303-small-world-p-0.5.mtx'
         self.train_and_eval_single_graph_with_model(model, data_path)
         # Temp return
         return

@@ -10,13 +10,14 @@ def main():
     parser.add_argument("--oversample", "-o", action="store_true")
     args = parser.parse_args()
 
+    print("HUH")
     t = Trainer(
-        lr=1e-3,
-        batch_size=512,
-        epochs=100,
+        lr=2e-4,
+        batch_size=10000,
+        epochs=50000,
         oversample=args.oversample,
         data_type=args.data_type,
-        num_workers=18,
+        num_workers=0,
         # num_workers=6,
         one_hot=False,
     )
