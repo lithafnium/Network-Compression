@@ -34,7 +34,7 @@ import psutil
 
 
 dtype = torch.float32
-device = torch.device("cuda:7" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 SMALL_WORLD = "small-world"
 ERDOS_RENYI = "erdos-renyi"
@@ -197,7 +197,7 @@ class Trainer:
 
         return train_dataset, val_dataset, coords, labels
 
-    def eval(self, model, val_dataloader: DataLoader, path: str):
+    def eval(self, model, val_dataloader: DataLoader, path: str, coords, labels):
         print("Evaluating...")
         model.eval()
         val_acc = 0
@@ -206,18 +206,27 @@ class Trainer:
         auc_roc = 0
         true_labels = []
         all_labels = []
-        for X_val_batch, y_val_batch in val_dataloader:
+
+        split_data = []
+        # TODO(ltang): arbitrary 10 will not work in general
+        split_num = 10
+        coords_list = torch.chunk(coords, split_num)
+        labels_list = torch.chunk(labels, split_num)
+        split_data = [(coords_list[i], labels_list[i])
+                      for i in range(split_num)]
+
+        # print(len(coords), len(val_dataloader))
+
+        for data in split_data:
+            X_val_batch, y_val_batch = data
             b_nodes = X_val_batch.to(device)
             b_labels = y_val_batch.to(device)
 
             y_val_pred = model(b_nodes)
-            y_pred_softmax = torch.log_softmax(y_val_pred, dim=1)
-            _, y_pred_tags = torch.max(y_pred_softmax, dim=1)
-
-            true_labels.extend(b_labels.detach().cpu().numpy())
-            all_labels.extend(y_pred_softmax.detach().cpu().numpy())
-
-            correct_pred = (y_pred_tags == b_labels).float()
+            y_val_clamped = torch.clamp(y_val_pred, 0, 1)
+            y_pred_tags = (y_val_clamped > 0.5).float()
+  
+            correct_pred = y_pred_tags == b_labels          
             acc = correct_pred.sum() / len(correct_pred)
             acc = torch.round(acc * 100)
 
@@ -226,20 +235,20 @@ class Trainer:
             val_loss = self.criterion(y_val_pred, b_labels.long())
             val_epoch_loss += val_loss.item() * y_val_batch.size(0)
 
-        avg_loss = val_epoch_loss / len(val_dataloader.sampler)
+        avg_loss = val_epoch_loss / (len(split_data) * y_val_batch.size(0))
         print("Test Loss: {:.5f}".format(avg_loss))
 
-        fpr, tpr, thresholds = roc_curve(
-            np.array(true_labels), np.array(all_labels)[:, 1])
-        auc_roc = auc(fpr, tpr)
+        # fpr, tpr, thresholds = roc_curve(
+        #     np.array(true_labels), np.array(all_labels)[:, 1])
+        # auc_roc = auc(fpr, tpr)
 
         print("Test Model Accuracy: {:.3f}%".format(
-            (val_acc / len(val_dataloader)).item()))
-        print("Test Model auc_roc: {:.3f}".format(auc_roc))
+            (val_acc / len(split_data)).item()))
+        # print("Test Model auc_roc: {:.3f}".format(auc_roc))
         # estimator = SizeEstimator(model, input_size=(2,))
-        self.model_info[path] = {
-            "accuracy": (val_acc / len(val_dataloader)).item(),
-        }
+        # self.model_info[path] = {
+        #     "accuracy": (val_acc / len(val_dataloader)).item(),
+        # }
         # wandb.log({"loss": avg_loss, "accuracy": (val_acc / len(val_dataloader)).item()})
 
         # with open(f"accuracy/{path}-accuracy.json", "w") as f:
@@ -266,9 +275,10 @@ class Trainer:
         split_data = []
         # TODO(ltang): arbitrary 10 will not work in general
         split_num = 10
-        coords_list = torch.split(coords, split_num)
-        labels_list = torch.split(labels, split_num)
-        split_data = [(coords_list[i], labels_list[i]) for i in range(split_num)]
+        coords_list = torch.chunk(coords, split_num)
+        labels_list = torch.chunk(labels, split_num)
+        split_data = [(coords_list[i], labels_list[i])
+                      for i in range(split_num)]
 
         for epoch_i in range(epochs):
             train_epoch_loss = 0
@@ -280,7 +290,6 @@ class Trainer:
             # for j, data in enumerate(train_dataloader):
             # print("j?s", j)
             for data in split_data:
-
                 x_train_batch, y_train_batch = data
                 b_nodes = x_train_batch.to(device)
                 b_labels = y_train_batch.to(device)
@@ -295,7 +304,7 @@ class Trainer:
 
             # print("computing avg_loss")
             avg_loss = train_epoch_loss / \
-                (len(train_dataloader) * x_train_batch.size(0))
+                (len(split_data) * x_train_batch.size(0))
             if epoch_i % 10 == 0:
                 print(
                     f"Epoch {epoch_i + 1}: | Train Loss: {avg_loss:.5f} "
@@ -308,8 +317,8 @@ class Trainer:
         # TODO(leonard): fix this hacky af trick
         plot_path = path.strip(".mtx")
         print("plot_path", plot_path)
-        self.save_plot(plot_path, loss, epochs)
-        self.eval(model, val_dataloader, path)
+        # self.save_plot(plot_path, loss, epochs)
+        self.eval(model, val_dataloader, path, coords, labels)
         torch.save(model.state_dict(), f"models/{plot_path}.pt")
         # wandb.finish()
         # torch.save(model.state_dict(), f"./models/{path}.pt")
@@ -366,8 +375,9 @@ class Trainer:
             w0_initial=30.0
         )
         model.to(device)
-        data_path = '/data/leonardtang/cs222proj/data/mtx_graphs/socfb-Harvard1.mtx'
-        # data_path = 'data/graph-100-0.303-small-world-p-0.5.mtx'
+        # data_path = 'data/mtx_graphs/socfb-Harvard1.mtx'
+        data_path = "data/graph-1000-0.501-small-world-Ordernone-p-0.5.mtx"
+        # data_path = 'data/graph-1000-0.303-small-world-p-0.5.mtx'
         # data_path = '/data/leonardtang/cs222proj/data/graph-1000-0.25-small-world.mtx'
         self.train_and_eval_single_graph_with_model(model, data_path)
         # Temp return

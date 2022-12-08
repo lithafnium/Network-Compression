@@ -15,7 +15,7 @@ def main():
         lr=2e-5,
         batch_size=10000000,
         # batch_size=128,
-        epochs=50000,
+        epochs=1000,
         oversample=args.oversample,
         data_type=args.data_type,
         num_workers=4,
