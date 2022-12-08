@@ -69,6 +69,8 @@ for i in range(1):
     # Load image
     img = imageio.imread(
         "../graph_images/graph-1000-0.501-small-world-Ordernone-p-0.5.mtx-original.png")
+    # img = imageio.imread(
+    #     "../graph_images/graph-100-0.303-small-world-Ordernone-p-0.5.mtx-original.png")
     img = transforms.ToTensor()(img).float().to(device, dtype)
 
     # Setup model

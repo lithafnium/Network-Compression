@@ -27,8 +27,10 @@ from time import time
 from scipy.io import mmread
 from sklearn.metrics import auc, roc_curve
 import networkx as nx
-# import multiprocess as mp
-from itertools import combinations
+
+# PLEASE
+import h5py
+import psutil
 
 
 dtype = torch.float32
@@ -48,6 +50,22 @@ class EdgeDataset(Dataset):
 
     def __getitem__(self, i):
         return self.edges[i], self.labels[i]
+
+
+class dataset_h5(torch.utils.data.Dataset):
+    def __init__(self, in_file):
+        super(dataset_h5, self).__init__()
+
+        self.file = h5py.File(in_file, 'r')
+        self.num_examples = self.file['coords'].shape[0]
+
+    def __getitem__(self, index):
+        coord = self.file['coords'][index]
+        label = self.file['labels'][index]
+        return coord, label
+
+    def __len__(self):
+        return self.num_examples
 
 
 class Trainer:
@@ -108,7 +126,7 @@ class Trainer:
         for num_workers in range(2, mp.cpu_count(), 2):
             print(f"Testing with {num_workers}")
             train_loader = DataLoader(dataset,
-                                      shuffle=True,
+                                      shuffle=False,
                                       num_workers=num_workers,
                                       batch_size=self.batch_size,
                                       pin_memory=True
@@ -129,7 +147,9 @@ class Trainer:
         """ 
         Read and load a mtx file as EdgeDataset 
         """
+        print("pre mmread")
         a = mmread(path)
+        print("post mmread")
         # Sparse to dense
         if isinstance(a, sparse.coo_matrix):
             a = a.toarray()
@@ -157,11 +177,25 @@ class Trainer:
         print(coords.shape, labels.shape)
         print(coords[0], labels[0])
 
+        # PRAY
+        h5_f = h5py.File("mytestfile.hdf5", "w")
+        coords_dset = h5_f.create_dataset(
+            "coords", (coords.shape[0],), dtype='f')
+        labels_dset = h5_f.create_dataset(
+            "labels", (labels.shape[0],), dtype='i')
+        # print("coords_dset shape", h5_f['coords'].shape)
+        # print("coords_dset shape 0", h5_f['coords'].shape[0])
+        # print("labels_dset shape", type(h5_f['labels'].shape))
+
+        # train_dataset = dataset_h5("mytestfile.hdf5")
+        # val_dataset = dataset_h5("mytestfile.hdf5")
+
         train_dataset = EdgeDataset(coords, labels)
-        self.find_optimal_num_workers(train_dataset)
+        # self.find_optimal_num_workers(train_dataset)
         val_dataset = EdgeDataset(coords, labels)
         # val_dataset = EdgeDataset(og_edges, og_labels)
-        return train_dataset, val_dataset
+
+        return train_dataset, val_dataset, coords, labels
 
     def eval(self, model, val_dataloader: DataLoader, path: str):
         print("Evaluating...")
@@ -221,15 +255,32 @@ class Trainer:
         val_dataloader,
         epochs,
         path,
+        coords,
+        labels,
     ):
         optimizer = optim.Adam(model.parameters(), lr=self.lr)
         loss = []
         print(f"Data path: {path}")
         # for epoch_i in tqdm.trange(epochs):
+
+        split_data = []
+        # TODO(ltang): arbitrary 10 will not work in general
+        split_num = 10
+        coords_list = torch.split(coords, split_num)
+        labels_list = torch.split(labels, split_num)
+        split_data = [(coords_list[i], labels_list[i]) for i in range(split_num)]
+
         for epoch_i in range(epochs):
             train_epoch_loss = 0
 
-            for j, data in enumerate(train_dataloader):
+            # /print("preaccessing dataloader")
+            # print(
+            #     f"RAM used: {psutil.Process().memory_info().rss / (1024 * 1024):.2f} MB")
+
+            # for j, data in enumerate(train_dataloader):
+            # print("j?s", j)
+            for data in split_data:
+
                 x_train_batch, y_train_batch = data
                 b_nodes = x_train_batch.to(device)
                 b_labels = y_train_batch.to(device)
@@ -242,7 +293,9 @@ class Trainer:
 
                 train_epoch_loss += train_loss.item() * x_train_batch.size(0)
 
-            avg_loss = train_epoch_loss / len(train_dataloader.sampler)
+            # print("computing avg_loss")
+            avg_loss = train_epoch_loss / \
+                (len(train_dataloader) * x_train_batch.size(0))
             if epoch_i % 10 == 0:
                 print(
                     f"Epoch {epoch_i + 1}: | Train Loss: {avg_loss:.5f} "
@@ -262,16 +315,18 @@ class Trainer:
         # torch.save(model.state_dict(), f"./models/{path}.pt")
 
     def train_and_eval_single_graph_with_model(self, model, data_path):
-        train_dataset, val_dataset = self.get_data(data_path)
+        train_dataset, val_dataset, coords, labels = self.get_data(data_path)
+        print("constructing train data loader")
         train_dataloader = DataLoader(
             train_dataset,
             # sampler=RandomSampler(train_dataset),  # Sampling for training is random
-            shuffle=True,
+            shuffle=False,
             batch_size=self.batch_size,
             pin_memory=True,
             num_workers=self.num_workers,
         )
 
+        print("constructing val data loader")
         evaluation_dataloader = DataLoader(
             val_dataset,
             # sampler=SequentialSampler(
@@ -289,7 +344,9 @@ class Trainer:
             train_dataloader,
             evaluation_dataloader,
             epochs=self.epochs,
-            path=f"{model.model_name}-oversample{self.oversample}-{data_path}"
+            path=f"{model.model_name}-oversample{self.oversample}-{data_path}",
+            coords=coords,
+            labels=labels,
         )
 
     def train_and_eval_all_graphs_and_models(self):
@@ -311,6 +368,7 @@ class Trainer:
         model.to(device)
         data_path = '/data/leonardtang/cs222proj/data/mtx_graphs/socfb-Harvard1.mtx'
         # data_path = 'data/graph-100-0.303-small-world-p-0.5.mtx'
+        # data_path = '/data/leonardtang/cs222proj/data/graph-1000-0.25-small-world.mtx'
         self.train_and_eval_single_graph_with_model(model, data_path)
         # Temp return
         return

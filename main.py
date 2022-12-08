@@ -12,12 +12,13 @@ def main():
 
     print("HUH")
     t = Trainer(
-        lr=2e-4,
-        batch_size=10000,
+        lr=2e-5,
+        batch_size=10000000,
+        # batch_size=128,
         epochs=50000,
         oversample=args.oversample,
         data_type=args.data_type,
-        num_workers=0,
+        num_workers=4,
         # num_workers=6,
         one_hot=False,
     )
