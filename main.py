@@ -8,14 +8,15 @@ def main():
                         choices=[SMALL_WORLD, ERDOS_RENYI], default=SMALL_WORLD)
     # TODO(leonard) -- set up argparsing to control archs, training procedure, training params
     parser.add_argument("--oversample", "-o", action="store_true")
+    parser.add_argument("--epochs", "-e", type=int, default=1000)
+    parser.add_argument("--learning-rate", "-lr", type=float, default=2e-4)
     args = parser.parse_args()
 
-    print("HUH")
     t = Trainer(
-        lr=2e-5,
+        lr=args.learning_rate,
         batch_size=10000000,
         # batch_size=128,
-        epochs=1000,
+        epochs=args.epochs,
         oversample=args.oversample,
         data_type=args.data_type,
         num_workers=4,

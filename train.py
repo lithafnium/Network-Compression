@@ -32,12 +32,15 @@ import networkx as nx
 import h5py
 import psutil
 
+from torch._C import dtype
+from typing import Dict
 
-dtype = torch.float32
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+device = torch.device("cuda:7" if torch.cuda.is_available() else "cpu")
 
 SMALL_WORLD = "small-world"
 ERDOS_RENYI = "erdos-renyi"
+SPLITNUM = 3
 
 
 class EdgeDataset(Dataset):
@@ -66,6 +69,36 @@ class dataset_h5(torch.utils.data.Dataset):
 
     def __len__(self):
         return self.num_examples
+
+
+DTYPE_BIT_SIZE: Dict[dtype, int] = {
+    torch.float32: 32,
+    torch.float: 32,
+    torch.float64: 64,
+    torch.double: 64,
+    torch.float16: 16,
+    torch.half: 16,
+    torch.bfloat16: 16,
+    torch.complex32: 32,
+    torch.complex64: 64,
+    torch.complex128: 128,
+    torch.cdouble: 128,
+    torch.uint8: 8,
+    torch.int8: 8,
+    torch.int16: 16,
+    torch.short: 16,
+    torch.int32: 32,
+    torch.int: 32,
+    torch.int64: 64,
+    torch.long: 64,
+    torch.bool: 1
+}
+
+
+def model_size_in_bits(model):
+    """Calculate total number of bits to store `model` parameters and buffers."""
+    return sum(sum(t.nelement() * DTYPE_BIT_SIZE[t.dtype] for t in tensors)
+               for tensors in (model.parameters(), model.buffers()))
 
 
 class Trainer:
@@ -209,7 +242,7 @@ class Trainer:
 
         split_data = []
         # TODO(ltang): arbitrary 10 will not work in general
-        split_num = 10
+        split_num = SPLITNUM
         coords_list = torch.chunk(coords, split_num)
         labels_list = torch.chunk(labels, split_num)
         split_data = [(coords_list[i], labels_list[i])
@@ -223,10 +256,11 @@ class Trainer:
             b_labels = y_val_batch.to(device)
 
             y_val_pred = model(b_nodes)
+            # print("y_val_pred", y_val_pred)
             y_val_clamped = torch.clamp(y_val_pred, 0, 1)
             y_pred_tags = (y_val_clamped > 0.5).float()
-  
-            correct_pred = y_pred_tags == b_labels          
+
+            correct_pred = y_pred_tags == b_labels
             acc = correct_pred.sum() / len(correct_pred)
             acc = torch.round(acc * 100)
 
@@ -268,13 +302,14 @@ class Trainer:
         labels,
     ):
         optimizer = optim.Adam(model.parameters(), lr=self.lr)
+        # lin_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=500)
         loss = []
         print(f"Data path: {path}")
         # for epoch_i in tqdm.trange(epochs):
 
         split_data = []
         # TODO(ltang): arbitrary 10 will not work in general
-        split_num = 10
+        split_num = SPLITNUM
         coords_list = torch.chunk(coords, split_num)
         labels_list = torch.chunk(labels, split_num)
         split_data = [(coords_list[i], labels_list[i])
@@ -305,20 +340,61 @@ class Trainer:
             # print("computing avg_loss")
             avg_loss = train_epoch_loss / \
                 (len(split_data) * x_train_batch.size(0))
-            if epoch_i % 10 == 0:
-                print(
-                    f"Epoch {epoch_i + 1}: | Train Loss: {avg_loss:.5f} "
-                )
+            # if epoch_i % 10 == 0:
+            #     print(
+            #         f"Epoch {epoch_i + 1}: | Train Loss: {avg_loss:.5f} "
+            #     )
+            print(
+                f"Epoch {epoch_i + 1}: | Train Loss: {avg_loss:.5f} "
+            )
             # print("Model accuracy: {:.3f}%".format(
             #     (train_acc / len(train_dataloader)).item()))
             # wandb.log({"loss": avg_loss, "accuracy": (
             #     train_acc / len(train_dataloader)).item()})
+            # lin_scheduler.step(avg_loss)
+
+            # TODO: fix, just hacky af as of now:
+            # if epoch_i % 250 == 0 and optimizer.param_groups[0]['lr'] > 1e-6:
+            if epoch_i % 250 == 0 and optimizer.param_groups[0]['lr'] > 1e-6:
+                optimizer.param_groups[0]['lr'] *= 0.75
+                print("new lr", optimizer.param_groups[0]['lr'])
+
+            if train_loss < 0.0005:
+                print("TRAINING LOSS LESS THAN 0.0005")
+                break
+
+            # print("lr", optimizer.param_groups[0]['lr'])
 
         # TODO(leonard): fix this hacky af trick
-        plot_path = path.strip(".mtx")
+        plot_path = path.split("/")[-1].strip(".mtx")
         print("plot_path", plot_path)
         # self.save_plot(plot_path, loss, epochs)
+
+        ####### CALCULATE BPE #########
+        # model_size = model_size_in_bits(model) / 8000.
+        model.eval()
+        model_size = model_size_in_bits(model)
+        print(f'Model size: {model_size:.1f} bits')
+        print(f'Model size: {(model_size / 8000):.1f} kB')
+        fp_bpp = model_size / math.sqrt(len(coords))
+        print(f'Full precision bits-per-node: {fp_bpp:.2f}')
         self.eval(model, val_dataloader, path, coords, labels)
+
+        half_model = model.half().to(device)
+        half_coords = coords.half().to(device)
+        half_labels = labels.half().to(device)
+        model_size = model_size_in_bits(half_model)
+        print(f'Half model size: {model_size:.1f} bits')
+        print(f'Half model size: {(model_size / 8000):.1f} kB')
+        hp_bpp = model_size / math.sqrt(len(coords))
+        print(f'Half precision bits-per-node: {hp_bpp:.2f}')
+        self.eval(half_model, val_dataloader, path, half_coords, half_labels)
+
+        # model_int8 = torch.quantization.convert(model)
+        # half_coords = coords.half().to(device)
+        # half_labels = labels.half().to(device)
+        # self.eval(model, val_dataloader, path, half_coords, half_labels)
+
         torch.save(model.state_dict(), f"models/{plot_path}.pt")
         # wandb.finish()
         # torch.save(model.state_dict(), f"./models/{path}.pt")
@@ -367,18 +443,23 @@ class Trainer:
         #                    num_layers=18, num_nodes=256)
         model = Siren(
             dim_in=2,
-            dim_hidden=28,
+            # dim_hidden=28,
+            dim_hidden=84,
             dim_out=1,
-            num_layers=10,
+            # num_layers=20,
+            num_layers=14,
             final_activation=torch.nn.Identity(),
             w0=30.0,
             w0_initial=30.0
         )
         model.to(device)
         # data_path = 'data/mtx_graphs/socfb-Harvard1.mtx'
-        data_path = "data/graph-1000-0.501-small-world-Ordernone-p-0.5.mtx"
+        # data_path = "data/graph-1000-0.501-small-world-Ordernone-p-0.5.mtx"
         # data_path = 'data/graph-1000-0.303-small-world-p-0.5.mtx'
-        # data_path = '/data/leonardtang/cs222proj/data/graph-1000-0.25-small-world.mtx'
+        # data_path = "data/graph-1000-0.250-small-world-Ordernone-p-0.5.mtx"
+        # data_path = "data/graph-100-0.747-small-world-Ordernone-p-0.5.mtx"
+        # data_path = "data/graph-100-0.505-small-world-Ordernone-p-0.5.mtx"
+        data_path = "data/graph-500-0.501-small-world-Ordernone-p-0.5.mtx"
         self.train_and_eval_single_graph_with_model(model, data_path)
         # Temp return
         return
