@@ -7,6 +7,35 @@ from build_graph import generate_image
 
 from PIL import Image
 
+from nodevectors import Node2Vec
+
+from gensim.models import KeyedVectors
+import torch
+
+def load_embeddings(path):
+    word_vectors = KeyedVectors.load_word2vec_format(path)
+    # print(word_vectors.get_vector(str(0)).shape)
+    t1 = torch.Tensor(word_vectors.get_vector(str(0)))
+    t2 = torch.Tensor(word_vectors.get_vector(str(0)))
+
+    print(torch.cat((t1, t2)))
+    
+
+
+def embeddings(path):
+    A = mmread(path)
+    if type(A) == scipy.sparse.coo.coo_matrix:
+        A = A.A
+    G = nx.from_numpy_matrix(A)
+
+    g2v = Node2Vec(
+        n_components=32,
+        walklen=10
+    )
+    g2v.fit(G)
+    path = path.strip(".mtx")
+    g2v.save_vectors(f"{path}.kv")
+
 
 def bfs(path):
     A = mmread(path)
@@ -105,3 +134,5 @@ if __name__ == "__main__":
     # mtx_to_graph(args.graph_path)
     convert_img_to_graph(args.graph_path)
     # bfs("data/graph-100-0.040-small-world-p-0.5.mtx")
+    # embeddings(args.graph_path)
+    # load_embeddings(args.graph_path)

@@ -28,6 +28,8 @@ from scipy.io import mmread
 from sklearn.metrics import auc, roc_curve
 import networkx as nx
 
+from plot_predictions import plot
+
 # PLEASE
 import h5py
 import psutil
@@ -35,12 +37,15 @@ import psutil
 from torch._C import dtype
 from typing import Dict
 
+from torch.optim.lr_scheduler import CosineAnnealingLR
 
-device = torch.device("cuda:7" if torch.cuda.is_available() else "cpu")
+from gensim.models import KeyedVectors
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 SMALL_WORLD = "small-world"
 ERDOS_RENYI = "erdos-renyi"
-SPLITNUM = 3
+SPLITNUM = 10
 
 
 class EdgeDataset(Dataset):
@@ -118,8 +123,8 @@ class Trainer:
         one_hot=False,
         order="none"
     ):
-        # self.criterion = nn.CrossEntropyLoss()
-        self.criterion = nn.MSELoss()
+        self.criterion = nn.CrossEntropyLoss()
+        # self.criterion = nn.MSELoss()
         # self.graph_sizes = [100]
         self.graph_sizes = [1000]
         # self.graph_densities = [0.050, 0.100, 0.250, 0.501]
@@ -176,13 +181,11 @@ class Trainer:
         print("Done testing for optimal num_workers")
         return best_workers
 
-    def get_data(self, path, oversample_p=1.0):
+    def get_data(self, path, load_embeddings=False):
         """ 
         Read and load a mtx file as EdgeDataset 
         """
-        print("pre mmread")
         a = mmread(path)
-        print("post mmread")
         # Sparse to dense
         if isinstance(a, sparse.coo_matrix):
             a = a.toarray()
@@ -202,27 +205,47 @@ class Trainer:
         # Convert to range [-1, 1]
         coords *= 2
 
-        print("\ncoords?", coords)
+        # print("\ncoords?", coords)
         labels = a.reshape(1, -1).T
         # labels *= 255
-        print("labels?", labels)
-        print("coords.shape, labels.shape")
+        # print("labels?", labels)
         print(coords.shape, labels.shape)
-        print(coords[0], labels[0])
+        print(coords[0], labels[0], a[0][0])
+
+        if load_embeddings:
+            path = path.strip(".mtx")
+            node_embeddings = KeyedVectors.load_word2vec_format(f"{path}.bin")
+            c = []
+            for i in range(len(a)):
+                for j in range(len(a)):
+                    i_ = torch.Tensor(np.copy(node_embeddings.get_vector(str(i))))
+                    j_ = torch.Tensor(np.copy(node_embeddings.get_vector(str(j))))
+                    
+                    c.append(torch.cat((i_, j_)))
+
+            coords = torch.stack(c)
+
 
         # PRAY
-        h5_f = h5py.File("mytestfile.hdf5", "w")
-        coords_dset = h5_f.create_dataset(
-            "coords", (coords.shape[0],), dtype='f')
-        labels_dset = h5_f.create_dataset(
-            "labels", (labels.shape[0],), dtype='i')
+        # h5_f = h5py.File("mytestfile.hdf5", "w")
+        # coords_dset = h5_f.create_dataset(
+        #     "coords", (coords.shape[0],), dtype='f')
+        # labels_dset = h5_f.create_dataset(
+        #     "labels", (labels.shape[0],), dtype='i')
+        print(coords.size())
+
+        print(coords.shape, labels.shape)
+        # print(coords, labels)
+        
         # print("coords_dset shape", h5_f['coords'].shape)
         # print("coords_dset shape 0", h5_f['coords'].shape[0])
         # print("labels_dset shape", type(h5_f['labels'].shape))
 
         # train_dataset = dataset_h5("mytestfile.hdf5")
         # val_dataset = dataset_h5("mytestfile.hdf5")
-
+        # labels = labels.long()
+        labels = labels.squeeze()
+        print(coords, labels)
         train_dataset = EdgeDataset(coords, labels)
         # self.find_optimal_num_workers(train_dataset)
         val_dataset = EdgeDataset(coords, labels)
@@ -257,8 +280,10 @@ class Trainer:
 
             y_val_pred = model(b_nodes)
             # print("y_val_pred", y_val_pred)
-            y_val_clamped = torch.clamp(y_val_pred, 0, 1)
-            y_pred_tags = (y_val_clamped > 0.5).float()
+            # y_val_clamped = torch.clamp(y_val_pred, 0, 1)
+            # y_pred_tags = (y_val_clamped > 0.5).float()
+            y_pred_softmax = torch.log_softmax(y_val_pred, dim=1)
+            _, y_pred_tags = torch.max(y_pred_softmax, dim=1)
 
             correct_pred = y_pred_tags == b_labels
             acc = correct_pred.sum() / len(correct_pred)
@@ -301,7 +326,9 @@ class Trainer:
         coords,
         labels,
     ):
+        plot_path = path.split("/")[-1].strip(".mtx")
         optimizer = optim.Adam(model.parameters(), lr=self.lr)
+        scheduler = CosineAnnealingLR(optimizer, T_max=200)
         # lin_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=500)
         loss = []
         print(f"Data path: {path}")
@@ -317,7 +344,7 @@ class Trainer:
 
         for epoch_i in range(epochs):
             train_epoch_loss = 0
-
+            train_acc = 0
             # /print("preaccessing dataloader")
             # print(
             #     f"RAM used: {psutil.Process().memory_info().rss / (1024 * 1024):.2f} MB")
@@ -330,12 +357,27 @@ class Trainer:
                 b_labels = y_train_batch.to(device)
 
                 optimizer.zero_grad()
+
                 y_train_pred = model(b_nodes)
-                train_loss = self.criterion(y_train_pred, b_labels)
+                # print(b_nodes)
+                # print(b_labels)
+                # print(y_train_pred)
+                train_loss = self.criterion(y_train_pred, b_labels.long())
                 train_loss.backward()
                 optimizer.step()
 
                 train_epoch_loss += train_loss.item() * x_train_batch.size(0)
+                # y_val_clamped = torch.clamp(y_train_pred, 0, 1)
+                # y_pred_tags = (y_val_clamped > 0.5).float()
+                y_pred_softmax = torch.log_softmax(y_train_pred, dim=1)
+                _, y_pred_tags = torch.max(y_pred_softmax, dim=1)
+                correct_pred = y_pred_tags == b_labels
+                acc = correct_pred.sum() / len(correct_pred)
+                acc = torch.round(acc * 100)
+                train_acc += acc
+
+
+                # input()
 
             # print("computing avg_loss")
             avg_loss = train_epoch_loss / \
@@ -347,26 +389,33 @@ class Trainer:
             print(
                 f"Epoch {epoch_i + 1}: | Train Loss: {avg_loss:.5f} "
             )
+            print("Train Model Accuracy: {:.3f}%".format(
+                (train_acc / len(split_data)).item()))
             # print("Model accuracy: {:.3f}%".format(
             #     (train_acc / len(train_dataloader)).item()))
-            # wandb.log({"loss": avg_loss, "accuracy": (
-            #     train_acc / len(train_dataloader)).item()})
+            # wandb.log({"loss": avg_loss})
             # lin_scheduler.step(avg_loss)
 
             # TODO: fix, just hacky af as of now:
             # if epoch_i % 250 == 0 and optimizer.param_groups[0]['lr'] > 1e-6:
-            if epoch_i % 250 == 0 and optimizer.param_groups[0]['lr'] > 1e-6:
-                optimizer.param_groups[0]['lr'] *= 0.75
-                print("new lr", optimizer.param_groups[0]['lr'])
+            # if epoch_i % 500 == 0 and optimizer.param_groups[0]['lr'] > 1e-6:
+            #     optimizer.param_groups[0]['lr'] *= 0.75
+            #     print("==== new lr", optimizer.param_groups[0]['lr'])
+            
+            if epoch_i % 1000 == 0:
+                print("==== plotting graph image")
+                plot(model_args=model.arg_map, save_path=f"{epoch_i}-{plot_path}.png", coords=coords, model=model)
+                
 
-            if train_loss < 0.0005:
-                print("TRAINING LOSS LESS THAN 0.0005")
-                break
+            scheduler.step()
+
+            # if train_loss < 0.0005:
+            #     print("TRAINING LOSS LESS THAN 0.0005")
+            #     break
 
             # print("lr", optimizer.param_groups[0]['lr'])
 
         # TODO(leonard): fix this hacky af trick
-        plot_path = path.split("/")[-1].strip(".mtx")
         print("plot_path", plot_path)
         # self.save_plot(plot_path, loss, epochs)
 
@@ -439,27 +488,47 @@ class Trainer:
         Run experiments across all types of graph data and models
         """
 
-        # model = BlockModel(num_features=2, num_classes=2,
-        #                    num_layers=18, num_nodes=256)
-        model = Siren(
-            dim_in=2,
-            # dim_hidden=28,
-            dim_hidden=84,
-            dim_out=1,
-            # num_layers=20,
-            num_layers=14,
-            final_activation=torch.nn.Identity(),
-            w0=30.0,
-            w0_initial=30.0
-        )
+        model = BlockModel(num_features=2, num_classes=2,
+                           num_layers=5, num_nodes=100)
+
+        # model = UnSqueeze(num_features=2, num_classes=2, max_throughput_multiplier=256)
+        # model = Siren(
+        #     dim_in=2,
+        #     # dim_hidden=28,
+        #     dim_hidden=168,
+        #     dim_out=1,
+        #     # num_layers=20,
+        #     num_layers=18,
+        #     final_activation=torch.nn.Identity(),
+        #     w0=30.0,
+        #     w0_initial=30.0
+        # )
         model.to(device)
         # data_path = 'data/mtx_graphs/socfb-Harvard1.mtx'
         # data_path = "data/graph-1000-0.501-small-world-Ordernone-p-0.5.mtx"
         # data_path = 'data/graph-1000-0.303-small-world-p-0.5.mtx'
         # data_path = "data/graph-1000-0.250-small-world-Ordernone-p-0.5.mtx"
         # data_path = "data/graph-100-0.747-small-world-Ordernone-p-0.5.mtx"
-        # data_path = "data/graph-100-0.505-small-world-Ordernone-p-0.5.mtx"
-        data_path = "data/graph-500-0.501-small-world-Ordernone-p-0.5.mtx"
+        data_path = "data/graph-100-0.505-small-world-Ordernone-p-0.5.mtx"
+        # data_path = "data/graph-10-0.444-small-world-Ordernone-p-0.5.mtx"
+
+        # wandb.init(project="training-runs", entity="cs222", config={
+        #     "learning_rate": self.lr,
+        #     "epochs": self.epochs,
+        #     "batch_size": self.batch_size,
+        #     "graph_file": data_path,
+        #     "model_name": model.model_name,
+        #     "oversampling": self.oversample,
+        #     "graph_type": self.data_type,
+        # })
+        # if model.model_name == "widenet":
+        #     wandb.run.name = f"{model.model_name}-{model.width}-oversample{self.oversample}-{data_path}"
+        # elif model.model_name == "block":
+        #     wandb.run.name = f"{model.model_name}-{6}-{256}-oversample{self.oversample}-{data_path}"
+        # else:
+        #     wandb.run.name = f"{model.model_name}-100-0.242-oversample{self.oversample}-{data_path}"
+        # # wandb.run.name = f"40layers-{model.model_name}-oversample{self.oversample}-{data_path}"
+        # wandb.run.save()
         self.train_and_eval_single_graph_with_model(model, data_path)
         # Temp return
         return
@@ -488,25 +557,25 @@ class Trainer:
                         num_features=2, num_classes=2, num_layers=6, num_nodes=256)
                     model.to(device)
 
-                    # wandb.init(project="training-runs", entity="cs222", config={
-                    #     "learning_rate": self.lr,
-                    #     "epochs": self.epochs,
-                    #     "batch_size": self.batch_size,
-                    #     "graph_size": graph_size,
-                    #     "graph_density": graph_density,
-                    #     "graph_file": data_path,
-                    #     "model_name": model.model_name,
-                    #     "oversampling": self.oversample,
-                    #     "graph_type": self.data_type,
-                    # })
-                    # if model.model_name == "widenet":
-                    #     wandb.run.name = f"{model.model_name}-{model.width}-oversample{self.oversample}-{data_path}"
-                    # elif model.model_name == "block":
-                    #     wandb.run.name = f"{model.model_name}-{6}-{256}-oversample{self.oversample}-{data_path}"
-                    # else:
-                    #     wandb.run.name = f"{model.model_name}-oversample{self.oversample}-{data_path}"
-                    # # wandb.run.name = f"40layers-{model.model_name}-oversample{self.oversample}-{data_path}"
-                    # wandb.run.save()
+                    wandb.init(project="training-runs", entity="cs222", config={
+                        "learning_rate": self.lr,
+                        "epochs": self.epochs,
+                        "batch_size": self.batch_size,
+                        "graph_size": graph_size,
+                        "graph_density": graph_density,
+                        "graph_file": data_path,
+                        "model_name": model.model_name,
+                        "oversampling": self.oversample,
+                        "graph_type": self.data_type,
+                    })
+                    if model.model_name == "widenet":
+                        wandb.run.name = f"{model.model_name}-{model.width}-oversample{self.oversample}-{data_path}"
+                    elif model.model_name == "block":
+                        wandb.run.name = f"{model.model_name}-{6}-{256}-oversample{self.oversample}-{data_path}"
+                    else:
+                        wandb.run.name = f"{model.model_name}-oversample{self.oversample}-{data_path}"
+                    # wandb.run.name = f"40layers-{model.model_name}-oversample{self.oversample}-{data_path}"
+                    wandb.run.save()
                     # model = torch.nn.DataParallel(model)
                     self.train_and_eval_single_graph_with_model(
                         model, data_path)

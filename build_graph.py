@@ -152,7 +152,7 @@ def main():
     n = args.nodes
     d = args.density
     r = args.reorder
-
+    print(args.graph_type)
     if args.graph_type == SMALL_WORLD:
         adj, G = generate_watts_strogatz_graph(n, d, switch_prob=0.2)
         if r == "bfs":
@@ -173,16 +173,19 @@ def main():
         adj, G = generate_erdos_renyi(n, d)
         if r == "bfs":
             adj, G = reorder_bfs(adj, G)
-        path = f"data/graph-{n}-{nx.density(G):.3f}-small-world-Order{r}-p-0.5.mtx"
+        path = f"data/graph-{n}-{nx.density(G):.3f}-Erdos-Renyi-Order{r}-p-0.5.mtx"
         if r == "degree":
             gap = 50
             adj, G = order_by_degree(G, gap)
             # Save the actual density as the target density does not necessarily match
             path = f"data/graph-{n}-{nx.density(G):.3f}-Erdos-Renyi-Order{r}{gap}.mtx"
-    
-    print("Saving to", path)
-    io.mmwrite(path, adj)
+        generate_image(adj, path.strip("data/"))
 
+    print("Saving to", path)
+    
+    io.mmwrite(path, adj)
+    path = path.strip(".mtx")
+    nx.write_edgelist(G, f"{path}.edgelist")
     print("Sanity Check Graph Density:", nx.density(G))
 
 

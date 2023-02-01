@@ -24,10 +24,17 @@ class BlockModel(nn.Module):
             layers.append(nn.ReLU())
 
         layers = layers[0:len(layers) - 1]
-        layers.append(nn.Linear(num_nodes, 2))
+        layers.append(nn.Linear(num_nodes, num_classes))
         self.net = nn.Sequential(*layers)
 
         self.model_name = "block"
+
+        self.arg_map = {
+            "num_features": num_features, 
+            "num_classes": num_classes, 
+            "num_layers": num_layers, 
+            "num_nodes": num_nodes
+        }
 
     def forward(self, x):
         x = self.net(x)
@@ -54,6 +61,12 @@ class UnSqueeze(nn.Module):
         self.net = nn.Sequential(*layers)
 
         self.model_name = "unsqueeze"
+
+        self.arg_map = {
+            "num_features": num_features, 
+            "num_classes": num_classes, 
+            "max_throughput_multiplier": max_throughput_multiplier, 
+        }
 
     def forward(self, x):
         x = self.net(x)

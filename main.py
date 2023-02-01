@@ -4,12 +4,12 @@ from train import Trainer, SMALL_WORLD, ERDOS_RENYI
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data-type", "-d", type=str, required=True,
+    parser.add_argument("--data-type", "-d", type=str,
                         choices=[SMALL_WORLD, ERDOS_RENYI], default=SMALL_WORLD)
     # TODO(leonard) -- set up argparsing to control archs, training procedure, training params
     parser.add_argument("--oversample", "-o", action="store_true")
-    parser.add_argument("--epochs", "-e", type=int, default=1000)
-    parser.add_argument("--learning-rate", "-lr", type=float, default=2e-4)
+    parser.add_argument("--epochs", "-e", type=int, default=10000)
+    parser.add_argument("--learning-rate", "-lr", type=float, default=5e-3)
     args = parser.parse_args()
 
     t = Trainer(
